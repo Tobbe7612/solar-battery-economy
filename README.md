@@ -9,7 +9,8 @@
 
 <p align="center">
   <img src="images/icon.png" width="160">
-</p>**Solar Battery Economy** is a Home Assistant custom integration that analyzes the real economic performance of a **solar + battery energy system**.
+</p>
+**Solar Battery Economy** is a Home Assistant custom integration that analyzes the real economic performance of a **solar + battery energy system**.
 
 
 It calculates energy flows, financial savings, ROI, and performance indicators based on real-time power measurements and electricity prices.
@@ -316,6 +317,7 @@ Created by **Tobbe7612**
 
 GitHub:
 https://github.com/Tobbe7612/solar-battery-economy
+
 
 
 
