@@ -2,14 +2,14 @@
 <p align="center">
   <img src="images/architecture.png" width="900">
 </p>
+<p align="center">
+  <img src="images/icon.png" width="160">
+</p>
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![License](https://img.shields.io/github/license/Tobbe7612/solar-battery-economy)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/Tobbe7612/solar-battery-economy)](https://github.com/Tobbe7612/solar-battery-economy/releases)
 
-<p align="center">
-  <img src="images/icon.png" width="160">
-</p>
 **Solar Battery Economy** is a Home Assistant custom integration that analyzes the real economic performance of a **solar + battery energy system**.
 
 
@@ -317,6 +317,7 @@ Created by **Tobbe7612**
 
 GitHub:
 https://github.com/Tobbe7612/solar-battery-economy
+
 
 
 
