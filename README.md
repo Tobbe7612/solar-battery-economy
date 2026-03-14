@@ -1,9 +1,9 @@
 # Solar Battery Economy
 <p align="center">
-  <img src="images/architecture.png" width="900">
+  <img src="https://raw.githubusercontent.com/Tobbe7612/solar-battery-economy/main/images/architecture.png" width="900">
 </p>
 <p align="center">
-  <img src="images/icon.png" width="160">
+  <img src="https://raw.githubusercontent.com/Tobbe7612/solar-battery-economy/main/images/icon.png" width="160">
 </p>
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
