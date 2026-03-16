@@ -593,7 +593,7 @@ class PaybackDateSensor(EconomySensor):
         if self._last_update_time is not None:
             if now - self._last_update_time < timedelta(hours=12):
                 return
-        annual_state = self.hass.states.get("sensor.estimated_annual_savings")
+        annual_state = self.hass.states.get("sensor.02_estimated_annual_savings")
         if not annual_state or annual_state.state in ("unknown", "unavailable"):
             return
         try:
