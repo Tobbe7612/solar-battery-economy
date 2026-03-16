@@ -60,8 +60,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
     savings_keys = [
         ("solar_house", "Savings Solar-House"),
         ("battery_house", "Savings Battery-House"),
-        ("solar_export", "Earnings Solar-Export"),
-        ("battery_grid", "Earnings Battery-Export"),
         ("baseline_cost", "Baseline Cost (No System)"),
         ("actual_grid_cost", "Actual Grid Cost"),
         ("export_income", "24 Export Income"),
