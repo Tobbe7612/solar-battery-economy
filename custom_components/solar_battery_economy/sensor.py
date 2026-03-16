@@ -61,7 +61,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("solar_house", "Savings Solar-House"),
         ("battery_house", "Savings Battery-House"),
         ("solar_export", "Earnings Solar-Export"),
-        ("battery_export", "Earnings Battery-Export"),
+        ("battery_grid", "Earnings Battery-Export"),
         ("baseline_cost", "Baseline Cost (No System)"),
         ("actual_grid_cost", "Actual Grid Cost"),
         ("export_income", "24 Export Income"),
@@ -299,7 +299,7 @@ class PaybackSensor(EconomySensor, RestoreEntity):
             self.async_write_ha_state()
             return
         # Use AnnualSavingsSensor value for consistency
-        annual_state = self.hass.states.get("sensor.estimated_annual_savings")
+        annual_state = self.hass.states.get("sensor.02_estimated_annual_savings")
         if not annual_state or annual_state.state in ("unknown", "unavailable"):
             self._value = 0
             self.async_write_ha_state()
