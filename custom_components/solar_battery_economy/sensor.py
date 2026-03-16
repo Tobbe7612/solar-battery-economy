@@ -556,7 +556,6 @@ class BatteryUtilizationSensor(EconomySensor):
 # -----------------------------
 class PaybackDateSensor(EconomySensor):
     _attr_icon = "mdi:calendar-check"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     def __init__(self, coordinator, hass, entry):
         super().__init__(
             coordinator,
@@ -610,7 +609,7 @@ class PaybackDateSensor(EconomySensor):
             # Prevent overflow / unrealistic payback
             if days_remaining <= 0 or days_remaining > 365 * 50:
                 return
-            new_value = now + timedelta(days=days_remaining)
+            new_value = (now + timedelta(days=days_remaining)).year
         self._value = new_value
         self._last_update_time = now
         self.async_write_ha_state()
