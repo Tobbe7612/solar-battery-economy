@@ -579,7 +579,7 @@ class PaybackDateSensor(EconomySensor):
         if investment <= 0:
             return
         # 🔹 Get start date from PaybackSensor
-        payback_state = self.hass.states.get("sensor.payback_time")
+        payback_state = self.hass.states.get("sensor.10_payback_time")
         if not payback_state:
             return
         start_str = payback_state.attributes.get("start_date")
