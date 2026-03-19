@@ -166,7 +166,9 @@ class EnergySensor(EconomySensor, RestoreEntity):
 # MoneySensor – SEK
 # -----------------------------
 class MoneySensor(EconomySensor, RestoreEntity):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_device_class = "monetary"
     _attr_state_class = "total"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -203,7 +205,9 @@ def _calculate_total_economy(money: dict) -> float:
 # PeriodEconomySensor
 # -----------------------------
 class PeriodEconomySensor(EconomySensor, RestoreEntity):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_device_class = "monetary"
     _attr_state_class = "total"
     def __init__(self, coordinator, hass, entry, name, period):
@@ -322,7 +326,9 @@ class PaybackSensor(EconomySensor, RestoreEntity):
 # SavingsSensor – SEK
 # -----------------------------
 class SavingsSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_device_class = "monetary"
     _attr_state_class = "total"
     def __init__(self, coordinator, hass, entry, name, key):
@@ -379,7 +385,9 @@ class ROISensor(EconomySensor):
 # Estimated Annual Savings – SEK
 # -----------------------------
 class AnnualSavingsSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_icon = "mdi:calendar-star"
     _attr_state_class = "measurement"
     def __init__(self, coordinator, hass, entry):
@@ -422,7 +430,9 @@ class AnnualSavingsSensor(EconomySensor):
 # Effective Electricity Price – SEK/kWh
 # -----------------------------
 class EffectiveElectricityPriceSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK/kWh"
+    @property
+    def native_unit_of_measurement(self):
+        return f"{self.coordinator.currency}/kWh"
     _attr_icon = "mdi:cash-clock"
     _attr_state_class = "measurement"
 
@@ -641,7 +651,9 @@ class CO2SavedSensor(EconomySensor):
 # Solar Savings – SEK
 # -----------------------------
 class SolarSavingsSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_icon = "mdi:solar-power"
 
     def __init__(self, coordinator, hass, entry):
@@ -661,7 +673,9 @@ class SolarSavingsSensor(EconomySensor):
 # Battery Savings – SEK
 # -----------------------------
 class BatterySavingsSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_icon = "mdi:battery"
 
     def __init__(self, coordinator, hass, entry):
@@ -681,7 +695,9 @@ class BatterySavingsSensor(EconomySensor):
 # Battery Arbitrage Profit – SEK
 # -----------------------------
 class BatteryArbitrageSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_icon = "mdi:scale-balance"
     _attr_state_class = "total"
     _attr_device_class = "monetary"
@@ -712,7 +728,9 @@ class BatteryArbitrageSensor(EconomySensor):
 # Battery Self-Consumption Gain – SEK
 # -----------------------------
 class BatterySelfConsumptionSensor(EconomySensor):
-    _attr_native_unit_of_measurement = "SEK"
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
     _attr_icon = "mdi:home-battery"
     _attr_state_class = "total"
     _attr_device_class = "monetary"

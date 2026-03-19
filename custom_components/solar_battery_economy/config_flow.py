@@ -160,6 +160,15 @@ def _build_schema(defaults=None):
                     }
                 }
             ),
-            
+            vol.Optional("currency", default="SEK"): vol.In(
+                {
+                    "SEK": "SEK (Swedish Krona)",
+                    "EUR": "EUR (€ Euro)",
+                    "USD": "USD ($ US Dollar)",
+                    "NOK": "NOK (Norwegian Krone)",
+                    "DKK": "DKK (Danish Krone)",
+                    "GBP": "GBP (£ British Pound)",
+                }
+            ),
         }
     )
