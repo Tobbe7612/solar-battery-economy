@@ -249,6 +249,29 @@ After installation, add the integration and select the required sensors:
 
 Advanced Mode can be enabled in the integration options.
 
+## 💱 Currency Support
+
+The integration supports multiple currencies.
+
+You can select your currency during setup:
+
+- SEK (Swedish Krona)
+- EUR (€ Euro)
+- USD ($ US Dollar)
+- NOK (Norwegian Krone)
+- DKK (Danish Krone)
+- GBP (£ British Pound)
+
+⚠️ Important:
+The selected currency must match your electricity price sensors.
+
+Example:
+- If using EUR → price sensors must be €/kWh
+- If using SEK → price sensors must be SEK/kWh
+
+The integration calculates:
+Energy (kWh) × Price (currency/kWh) = Money (currency)
+
 ---
 
 # Device Structure
