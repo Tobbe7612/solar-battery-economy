@@ -35,7 +35,10 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.export_price_entity = conf["export_price"]
         self.investment = conf.get("investment", 0)
         self.co2_factor = conf.get("co2_factor", 0.4)
-        self.currency = conf.get("currency", "SEK")
+        self.currency = entry.options.get(
+            "currency",
+            conf.get("currency", "SEK"),
+)
 
         self._last_update = None
         self._unsub_listeners = []
