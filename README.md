@@ -127,21 +127,25 @@ Solar producing 3500 W → sensor = 3500
 
 The grid sensor must follow this convention:
 
+```
 Negative  = importing electricity
 Positive  = exporting electricity
-
+```
 
 Example:
 
-
+```
 Importing 1200 W from grid → -1200
 Exporting 800 W to grid → 800
+```
 
 ⚠️ Note:
 Some systems use the opposite convention:
 
+```
 Positive = import
 Negative = export
+```
 
 If your sensor follows this, you must invert it in Home Assistant.
 
