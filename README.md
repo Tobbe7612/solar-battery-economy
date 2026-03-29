@@ -128,19 +128,34 @@ Solar producing 3500 W → sensor = 3500
 The grid sensor must follow this convention:
 
 ```
-Positive  = importing electricity
-Negative  = exporting electricity
+Negative  = importing electricity
+Positive  = exporting electricity
 ```
 
 Example:
 
 ```
-Importing 1200 W from grid → 1200
-Exporting 800 W to grid → -800
+Importing 1200 W from grid → -1200
+Exporting 800 W to grid → 800
 ```
 
----
+⚠️ Note:
+Some systems use the opposite convention:
+```
+Positive = import
+Negative = export
 
+If your sensor follows this, you must invert it in Home Assistant.
+
+Example template:
+
+```yaml
+template:
+  - sensor:
+      - name: "Grid Power Corrected"
+        unit_of_measurement: "W"
+        state: "{{ states('sensor.your_grid_sensor') | float * -1 }}"
+---
 ### Battery Power
 
 Battery power must follow this convention:
@@ -264,6 +279,8 @@ You can select your currency during setup:
 
 ⚠️ Important:
 The selected currency must match your electricity price sensors.
+```markdown
+⚠️ The integration does not convert currencies. It only changes the displayed unit.
 
 Example:
 - If using EUR → price sensors must be €/kWh
