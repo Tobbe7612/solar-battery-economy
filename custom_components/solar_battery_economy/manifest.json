@@ -1,7 +1,7 @@
 {
   "domain": "solar_battery_economy",
   "name": "Solar Battery Economy",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "documentation": "https://github.com/Tobbe7612/solar-battery-economy",
   "issue_tracker": "https://github.com/Tobbe7612/solar-battery-economy/issues",
   "requirements": [],
