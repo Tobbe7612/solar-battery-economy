@@ -153,7 +153,9 @@ template:
       - name: "Grid Power Corrected"
         unit_of_measurement: "W"
         state: "{{ states('sensor.your_grid_sensor') | float * -1 }}"
+
 ---
+
 ### Battery Power
 
 Battery power must follow this convention:
