@@ -17,8 +17,42 @@ It calculates energy flows, financial savings, ROI, and performance indicators b
 
 The integration converts power flows into accumulated **kWh**, **SEK**, and **system performance metrics** to show the true value of your solar and battery system.
 
----
+## ⚠️ Financial Model Update (v1.2.0)
 
+Starting from version **v1.2.0**, the financial model has been improved to correctly account for battery charging from the grid.
+
+In earlier versions, energy used to charge the battery from the grid was not fully treated as a cost.
+This could lead to:
+
+* Overestimated savings
+* Overestimated annual projections
+* Unrealistically short payback times
+
+### ✅ What’s improved
+
+* Battery charging from grid is now correctly included as a cost
+* Savings calculations now reflect real-world economics
+* Annual savings and payback time are more accurate
+
+### 🔄 Important for existing users
+
+If you are upgrading from an older version:
+
+**Recommended:**
+
+1. Remove the integration
+2. Restart Home Assistant
+3. Add the integration again
+
+This ensures all calculations start from clean, correct data.
+
+If you choose not to reset:
+
+* Values will stabilize over time
+* Short-term values may appear inconsistent
+
+This update improves accuracy and reliability of all financial metrics.
+---
 # Features
 
 ### Energy Flow Analysis
@@ -35,6 +69,22 @@ The integration calculates the following power flows:
 * House → Grid
 
 These flows are integrated into accumulated **energy values (kWh)**.
+
+## 🎉 Solar Battery Flow Card (New)
+
+A custom Lovelace card is available for this integration, providing a real-time visual overview of your system.
+
+The card displays:
+
+* Energy flows (solar, battery, grid)
+* Import and export prices
+* Savings and performance metrics
+
+👉 Get it here:
+https://github.com/solar-battery-economy-flow-card
+
+This card is designed specifically for this integration and gives a clear and intuitive overview of your energy system.
+
 
 ---
 
