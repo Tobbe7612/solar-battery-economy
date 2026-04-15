@@ -85,6 +85,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ROISensor(coordinator, hass, entry))
     sensors.append(AnnualSavingsSensor(coordinator, hass, entry))
     sensors.append(EffectiveElectricityPriceSensor(coordinator, hass, entry))
+    sensors.append(ImportElectricityPriceSensor(coordinator, hass, entry))
+    sensors.append(ExportElectricityPriceSensor(coordinator, hass, entry))
     sensors.append(SolarSavingsSensor(coordinator, hass, entry))
     sensors.append(BatterySavingsSensor(coordinator, hass, entry))
     sensors.append(GridIndependenceSensor(coordinator, hass, entry))
@@ -459,6 +461,71 @@ class EffectiveElectricityPriceSensor(EconomySensor):
         else:
             self._value = round(grid_house_cost / grid_house_energy, 3)
 
+        self.async_write_ha_state()
+
+# -----------------------------
+# Import Electricity Price – currency/kWh
+# -----------------------------
+class ImportElectricityPriceSensor(EconomySensor):
+    _attr_state_class = "measurement"
+    _attr_icon = "mdi:cash"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "07 Import Electricity Price",
+            "import_electricity_price",
+            sensor_type="import_price",
+        )
+
+    @property
+    def native_unit_of_measurement(self):
+        return f"{self.coordinator.currency}/kWh"
+
+    def _handle_coordinator_update(self):
+        state = self.hass.states.get(self.coordinator.import_price_entity)
+
+        try:
+            value = float(state.state) if state else 0
+        except (ValueError, TypeError):
+            value = 0
+
+        self._value = round(value, 3)
+        self.async_write_ha_state()
+
+
+# -----------------------------
+# Export Electricity Price – currency/kWh
+# -----------------------------
+class ExportElectricityPriceSensor(EconomySensor):
+    _attr_state_class = "measurement"
+    _attr_icon = "mdi:cash"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "08 Export Electricity Price",
+            "export_electricity_price",
+            sensor_type="export_price",
+        )
+
+    @property
+    def native_unit_of_measurement(self):
+        return f"{self.coordinator.currency}/kWh"
+
+    def _handle_coordinator_update(self):
+        state = self.hass.states.get(self.coordinator.export_price_entity)
+
+        try:
+            value = float(state.state) if state else 0
+        except (ValueError, TypeError):
+            value = 0
+
+        self._value = round(value, 3)
         self.async_write_ha_state()
 
 # -----------------------------
