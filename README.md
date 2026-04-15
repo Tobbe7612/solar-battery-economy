@@ -70,22 +70,6 @@ The integration calculates the following power flows:
 
 These flows are integrated into accumulated **energy values (kWh)**.
 
-## 🎉 Solar Battery Flow Card (New)
-
-A custom Lovelace card is available for this integration, providing a real-time visual overview of your system.
-
-The card displays:
-
-* Energy flows (solar, battery, grid)
-* Import and export prices
-* Savings and performance metrics
-
-👉 Get it here:
-https://github.com/tobbe7612/solar-battery-economy-flow-card
-
-This card is designed specifically for this integration and gives a clear and intuitive overview of your energy system.
-
-
 ---
 
 ### Financial Analysis
@@ -140,6 +124,23 @@ Advanced Mode enables diagnostic sensors for deeper analysis:
 * Internal energy flows
 
 This keeps the default UI clean while still allowing advanced analysis.
+
+---
+
+## 🎉 Solar Battery Flow Card (New)
+
+A custom Lovelace card is available for this integration, providing a real-time visual overview of your system.
+
+The card displays:
+
+* Energy flows (solar, battery, grid)
+* Import and export prices
+* Savings and performance metrics
+
+👉 Get it here:
+https://github.com/tobbe7612/solar-battery-economy-flow-card
+
+This card is designed specifically for this integration and gives a clear and intuitive overview of your energy system.
 
 ---
 
