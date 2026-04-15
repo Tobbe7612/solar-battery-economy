@@ -9,6 +9,8 @@
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![License](https://img.shields.io/github/license/Tobbe7612/solar-battery-economy)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/Tobbe7612/solar-battery-economy)](https://github.com/Tobbe7612/solar-battery-economy/releases)
+[![Downloads](https://img.shields.io/github/downloads/Tobbe7612/solar-battery-economy/total.svg)](https://github.com/Tobbe7612/solar-battery-economy/releases)
+[![GitHub stars](https://img.shields.io/github/stars/Tobbe7612/solar-battery-economy.svg?style=social)](https://github.com/Tobbe7612/solar-battery-economy)
 
 **Solar Battery Economy** is a Home Assistant custom integration that analyzes the real economic performance of a **solar + battery energy system**.
 
