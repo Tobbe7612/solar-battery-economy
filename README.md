@@ -81,7 +81,7 @@ The card displays:
 * Savings and performance metrics
 
 👉 Get it here:
-https://github.com/solar-battery-economy-flow-card
+https://github.com/tobbe7612/solar-battery-economy-flow-card
 
 This card is designed specifically for this integration and gives a clear and intuitive overview of your energy system.
 
