@@ -265,66 +265,6 @@ class PeriodEconomySensor(EconomySensor, RestoreEntity):
         self.async_write_ha_state()
 
 # -----------------------------
-# PaybackSensor
-# -----------------------------
-class PaybackSensor(EconomySensor, RestoreEntity):
-    _attr_native_unit_of_measurement = "years"
-    def __init__(self, coordinator, hass, entry):
-        super().__init__(coordinator, hass, entry, "10 Payback Time", "payback_time", sensor_type="payback")
-        self._attr_icon = "mdi:calendar-sync"
-        self._start_date = None
-    async def async_added_to_hass(self):
-        last_state = await self.async_get_last_state()
-        if last_state and last_state.state not in ("unknown", "unavailable"):
-            try:
-                self._value = float(last_state.state)
-            except ValueError:
-                self._value = 0
-
-            start_str = last_state.attributes.get("start_date")
-            if start_str:
-                from homeassistant.util.dt import parse_datetime
-                self._start_date = parse_datetime(start_str)
-        await super().async_added_to_hass()
-    def _handle_coordinator_update(self):
-        savings = self.coordinator.data.get("savings", {})
-        total = savings.get("total", 0)
-        investment = self.coordinator.investment
-        now = dt_util.now()
-        if investment <= 0:
-            self._value = 0
-            self.async_write_ha_state()
-            return
-        # Start when first positive total appears
-        if self._start_date is None and total > 0:
-            self._start_date = now
-        if self._start_date is None or total <= 0:
-            self._value = 0
-            self.async_write_ha_state()
-            return
-        # Use AnnualSavingsSensor value for consistency
-        annual_state = self.hass.states.get("sensor.solar_battery_economy_financial_02_estimated_annual_savings")
-        if not annual_state or annual_state.state in ("unknown", "unavailable"):
-            self._value = 0
-            self.async_write_ha_state()
-            return
-        try:
-            yearly_estimate = float(annual_state.state)
-        except ValueError:
-            self._value = 0
-            self.async_write_ha_state()
-            return
-        if yearly_estimate <= 0:
-            self._value = 0
-        else:
-            self._value = round(investment / yearly_estimate, 2)
-        self._attr_extra_state_attributes = {
-            "start_date": self._start_date.isoformat() if self._start_date else None,
-            "yearly_estimate": round(yearly_estimate, 2),
-        }
-        self.async_write_ha_state()
-
-# -----------------------------
 # SavingsSensor – SEK
 # -----------------------------
 class SavingsSensor(EconomySensor):
@@ -355,6 +295,98 @@ class SavingsSensor(EconomySensor):
             self.coordinator.data["savings"].get(self._key, 0),
             2,
         )
+        self.async_write_ha_state()
+
+# -----------------------------
+# PaybackSensor
+# -----------------------------
+class PaybackSensor(EconomySensor, RestoreEntity):
+    _attr_native_unit_of_measurement = "years"
+    _attr_icon = "mdi:calendar-sync"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "10 Payback Time",
+            "payback_time",
+            sensor_type="payback",
+        )
+    async def async_added_to_hass(self):
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in ("unknown", "unavailable"):
+            try:
+                self._value = float(last_state.state)
+            except ValueError:
+                self._value = None
+        await super().async_added_to_hass()
+    def _handle_coordinator_update(self):
+        savings = self.coordinator.data.get("savings", {})
+        total = savings.get("total", 0)
+        investment = self.coordinator.investment
+        if investment <= 0 or total <= 0:
+            self._value = None
+            self.async_write_ha_state()
+            return
+        # Same logic as PaybackDateSensor
+        days_running = 2  # fixed stabilization
+        annual_estimate = (total / days_running) * 365
+        if annual_estimate <= 0:
+            self._value = None
+        else:
+            self._value = round(investment / annual_estimate, 2)
+        self._attr_extra_state_attributes = {
+            "annual_estimate": round(annual_estimate, 2),
+            "assumed_days": days_running,
+        }
+        self.async_write_ha_state()
+
+# -----------------------------
+# PayBack Date
+# -----------------------------
+class PaybackDateSensor(EconomySensor):
+    _attr_icon = "mdi:calendar-check"
+    _attr_device_class = SensorDeviceClass.DATE
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "11 Estimated Payback Date",
+            "payback_date",
+            sensor_type="payback_date",
+        )
+        self._value = None
+    @property
+    def native_value(self):
+        return self._value
+    def _handle_coordinator_update(self):
+        savings = self.coordinator.data.get("savings", {})
+        total = savings.get("total", 0)
+        investment = self.coordinator.investment
+        now = dt_util.now()
+        if investment <= 0 or total <= 0:
+            self._value = None
+            self.async_write_ha_state()
+            return
+        # Same logic as PaybackSensor
+        days_running = 2  # fixed stabilization
+        annual_estimate = (total / days_running) * 365
+        if annual_estimate <= 0:
+            self._value = None
+            self.async_write_ha_state()
+            return
+        remaining = investment - total
+        if remaining <= 0:
+            self._value = now.date()
+            self.async_write_ha_state()
+            return
+        days_remaining = (remaining / annual_estimate) * 365
+        if days_remaining <= 0 or days_remaining > 365 * 50:
+            self._value = None
+            self.async_write_ha_state()
+            return
+        self._value = (now + timedelta(days=days_remaining)).date()
         self.async_write_ha_state()
 
 # -----------------------------
@@ -624,69 +656,6 @@ class BatteryUtilizationSensor(EconomySensor):
             self._value = 0
         else:
             self._value = round((battery_discharge / battery_charge) * 100, 1)
-        self.async_write_ha_state()
-
-# -----------------------------
-# PayBack Date
-# -----------------------------
-class PaybackDateSensor(EconomySensor):
-    _attr_icon = "mdi:calendar-check"
-    def __init__(self, coordinator, hass, entry):
-        super().__init__(
-            coordinator,
-            hass,
-            entry,
-            "11 Estimated Payback Date",
-            "payback_date",
-            sensor_type="payback_date",
-        )
-        self._value = None
-        self._last_update_time = None
-    @property
-    def native_value(self):
-        return self._value
-    def _handle_coordinator_update(self):
-        savings = self.coordinator.data.get("savings", {})
-        total = savings.get("total", 0)
-        investment = self.coordinator.investment
-        now = dt_util.now()
-        if investment <= 0:
-            return
-        # 🔹 Get start date from PaybackSensor
-        payback_state = self.hass.states.get("sensor.solar_battery_economy_financial_10_payback_time")
-        if not payback_state:
-            return
-        start_str = payback_state.attributes.get("start_date")
-        if not start_str:
-            return
-        from homeassistant.util.dt import parse_datetime
-        start_date = parse_datetime(start_str)
-        if not start_date:
-            return
-        # throttle updates
-        if self._last_update_time is not None:
-            if now - self._last_update_time < timedelta(hours=12):
-                return
-        annual_state = self.hass.states.get("sensor.solar_battery_economy_financial_02_estimated_annual_savings")
-        if not annual_state or annual_state.state in ("unknown", "unavailable"):
-            return
-        try:
-            yearly_estimate = float(annual_state.state)
-        except ValueError:
-            return
-        if yearly_estimate <= 0:
-            return
-        remaining = investment - total
-        if remaining <= 0:
-            new_value = now
-        else:
-            days_remaining = (remaining / yearly_estimate) * 365
-            # Prevent overflow / unrealistic payback
-            if days_remaining <= 0 or days_remaining > 365 * 50:
-                return
-            new_value = (now + timedelta(days=days_remaining)).year
-        self._value = new_value
-        self._last_update_time = now
         self.async_write_ha_state()
 
 # -----------------------------
