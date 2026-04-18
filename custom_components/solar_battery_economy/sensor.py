@@ -303,7 +303,7 @@ class PaybackSensor(EconomySensor, RestoreEntity):
             self.async_write_ha_state()
             return
         # Use AnnualSavingsSensor value for consistency
-        annual_state = self.hass.states.get("sensor.02_estimated_annual_savings")
+        annual_state = self.hass.states.get("sensor.solar_battery_economy_financial_02_estimated_annual_savings")
         if not annual_state or annual_state.state in ("unknown", "unavailable"):
             self._value = 0
             self.async_write_ha_state()
@@ -653,7 +653,7 @@ class PaybackDateSensor(EconomySensor):
         if investment <= 0:
             return
         # 🔹 Get start date from PaybackSensor
-        payback_state = self.hass.states.get("sensor.10_payback_time")
+        payback_state = self.hass.states.get("sensor.solar_battery_economy_financial_10_payback_time")
         if not payback_state:
             return
         start_str = payback_state.attributes.get("start_date")
@@ -667,7 +667,7 @@ class PaybackDateSensor(EconomySensor):
         if self._last_update_time is not None:
             if now - self._last_update_time < timedelta(hours=12):
                 return
-        annual_state = self.hass.states.get("sensor.02_estimated_annual_savings")
+        annual_state = self.hass.states.get("sensor.solar_battery_economy_financial_02_estimated_annual_savings")
         if not annual_state or annual_state.state in ("unknown", "unavailable"):
             return
         try:
