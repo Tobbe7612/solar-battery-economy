@@ -346,7 +346,7 @@ This enables independent ROI and payback analysis for both the solar and battery
 
 Advanced Mode can be enabled in the integration options.
 
-# Optional Battery Support
+## Optional Battery Support
 
 The integration also works without a battery system.
 
