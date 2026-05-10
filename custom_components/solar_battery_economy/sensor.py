@@ -89,6 +89,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ExportElectricityPriceSensor(coordinator, hass, entry))
     sensors.append(SolarSavingsSensor(coordinator, hass, entry))
     sensors.append(BatterySavingsSensor(coordinator, hass, entry))
+    sensors.append(SolarAnnualSavingsSensor(coordinator, hass, entry))
+    sensors.append(BatteryAnnualSavingsSensor(coordinator, hass, entry))
+
+    sensors.append(SolarROISensor(coordinator, hass, entry))
+    sensors.append(BatteryROISensor(coordinator, hass, entry))
+
+    sensors.append(SolarPaybackSensor(coordinator, hass, entry))
+    sensors.append(BatteryPaybackSensor(coordinator, hass, entry))
+
     sensors.append(GridIndependenceSensor(coordinator, hass, entry))
     sensors.append(SolarSelfConsumptionSensor(coordinator, hass, entry))
     sensors.append(CO2SavedSensor(coordinator, hass, entry))
@@ -203,6 +212,19 @@ def _calculate_total_economy(money: dict) -> float:
         - money.get("grid_house", 0)
     )
 
+def _calculate_annual_estimate(total, start_date):
+    """Calculate annual estimate based on runtime."""
+    if total <= 0 or start_date is None:
+        return 0
+    days_running = max(
+        (dt_util.now() - start_date).total_seconds() / 86400,
+        0.01,
+    )
+    # Stabilize early runtime
+    effective_days = max(days_running, 3)
+    daily_average = total / effective_days
+    return daily_average * 365
+
 # -----------------------------
 # PeriodEconomySensor
 # -----------------------------
@@ -312,6 +334,7 @@ class PaybackSensor(EconomySensor, RestoreEntity):
             "payback_time",
             sensor_type="payback",
         )
+        self._start_date = None
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
         if last_state and last_state.state not in ("unknown", "unavailable"):
@@ -321,6 +344,7 @@ class PaybackSensor(EconomySensor, RestoreEntity):
                 self._value = None
         await super().async_added_to_hass()
     def _handle_coordinator_update(self):
+        now = dt_util.now()
         savings = self.coordinator.data.get("savings", {})
         total = savings.get("total", 0)
         investment = self.coordinator.investment
@@ -328,16 +352,20 @@ class PaybackSensor(EconomySensor, RestoreEntity):
             self._value = None
             self.async_write_ha_state()
             return
-        # Same logic as PaybackDateSensor
-        days_running = 2  # fixed stabilization
-        annual_estimate = (total / days_running) * 365
+        # Use same annualization logic as AnnualSavingsSensor
+        if self._start_date is None:
+            self._start_date = now
+        annual_estimate = _calculate_annual_estimate(
+            total,
+            self._start_date,
+        )
         if annual_estimate <= 0:
             self._value = None
         else:
             self._value = round(investment / annual_estimate, 2)
         self._attr_extra_state_attributes = {
             "annual_estimate": round(annual_estimate, 2),
-            "assumed_days": days_running,
+            "start_date": self._start_date.isoformat() if self._start_date else None,
         }
         self.async_write_ha_state()
 
@@ -357,6 +385,7 @@ class PaybackDateSensor(EconomySensor):
             sensor_type="payback_date",
         )
         self._value = None
+        self._start_date = None
     @property
     def native_value(self):
         return self._value
@@ -369,9 +398,14 @@ class PaybackDateSensor(EconomySensor):
             self._value = None
             self.async_write_ha_state()
             return
-        # Same logic as PaybackSensor
-        days_running = 2  # fixed stabilization
-        annual_estimate = (total / days_running) * 365
+        # Use same annualization logic as AnnualSavingsSensor
+        if self._start_date is None:
+            self._start_date = now
+
+        annual_estimate = _calculate_annual_estimate(
+            total,
+            self._start_date,
+        )
         if annual_estimate <= 0:
             self._value = None
             self.async_write_ha_state()
@@ -450,14 +484,11 @@ class AnnualSavingsSensor(EconomySensor):
             return
         if self._start_date is None:
             self._start_date = dt_util.now()
-        days_running = max(
-            (dt_util.now() - self._start_date).total_seconds() / 86400,
-            0.01,
+        annual = _calculate_annual_estimate(
+            total,
+            self._start_date,
         )
-        # Stabilize estimate during early runtime
-        effective_days = max(days_running, 3)
-        daily_average = total / effective_days
-        self._value = round(daily_average * 365, 2)
+        self._value = round(annual, 2)
         self.async_write_ha_state()
 
 # -----------------------------
@@ -725,6 +756,204 @@ class BatterySavingsSensor(EconomySensor):
 
         self._value = round(battery_house + battery_grid, 2)
 
+        self.async_write_ha_state()
+
+# -----------------------------
+# Solar Annual Savings
+# -----------------------------
+class SolarAnnualSavingsSensor(EconomySensor):
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
+    _attr_icon = "mdi:solar-power"
+    _attr_state_class = "measurement"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "40 Solar Annual Savings",
+            "solar_annual_savings",
+            sensor_type="solar_annual",
+        )
+        self._start_date = None
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        solar_total = (
+            money.get("solar_house", 0)
+            + money.get("solar_export", 0)
+        )
+        if self._start_date is None:
+            self._start_date = dt_util.now()
+        annual = _calculate_annual_estimate(
+            solar_total,
+            self._start_date,
+        )
+        self._value = round(annual, 2)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Battery Annual Savings
+# -----------------------------
+class BatteryAnnualSavingsSensor(EconomySensor):
+    @property
+    def native_unit_of_measurement(self):
+        return self.coordinator.currency
+    _attr_icon = "mdi:battery"
+    _attr_state_class = "measurement"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "41 Battery Annual Savings",
+            "battery_annual_savings",
+            sensor_type="battery_annual",
+        )
+        self._start_date = None
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        battery_total = (
+            money.get("battery_house", 0)
+            + money.get("battery_grid", 0)
+        )
+        if self._start_date is None:
+            self._start_date = dt_util.now()
+        annual = _calculate_annual_estimate(
+            battery_total,
+            self._start_date,
+        )
+        self._value = round(annual, 2)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Solar ROI
+# -----------------------------
+class SolarROISensor(EconomySensor):
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:percent"
+    _attr_state_class = "measurement"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "42 Solar ROI",
+            "solar_roi",
+            sensor_type="solar_roi",
+        )
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        investment = self.coordinator.solar_investment
+        total = (
+            money.get("solar_house", 0)
+            + money.get("solar_export", 0)
+        )
+        if investment <= 0:
+            self._value = 0
+        else:
+            self._value = round((total / investment) * 100, 2)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Battery ROI
+# -----------------------------
+class BatteryROISensor(EconomySensor):
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:percent"
+    _attr_state_class = "measurement"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "43 Battery ROI",
+            "battery_roi",
+            sensor_type="battery_roi",
+        )
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        investment = self.coordinator.battery_investment
+        total = (
+            money.get("battery_house", 0)
+            + money.get("battery_grid", 0)
+        )
+        if investment <= 0:
+            self._value = 0
+        else:
+            self._value = round((total / investment) * 100, 2)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Solar Payback Time
+# -----------------------------
+class SolarPaybackSensor(EconomySensor):
+    _attr_native_unit_of_measurement = "years"
+    _attr_icon = "mdi:calendar-sync"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "44 Solar Payback Time",
+            "solar_payback",
+            sensor_type="solar_payback",
+        )
+        self._start_date = None
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        investment = self.coordinator.solar_investment
+        solar_total = (
+            money.get("solar_house", 0)
+            + money.get("solar_export", 0)
+        )
+        if self._start_date is None:
+            self._start_date = dt_util.now()
+        annual = _calculate_annual_estimate(
+            solar_total,
+            self._start_date,
+        )
+        if investment <= 0 or annual <= 0:
+            self._value = None
+        else:
+            self._value = round(investment / annual, 2)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Battery Payback Time
+# -----------------------------
+class BatteryPaybackSensor(EconomySensor):
+    _attr_native_unit_of_measurement = "years"
+    _attr_icon = "mdi:calendar-sync"
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "45 Battery Payback Time",
+            "battery_payback",
+            sensor_type="battery_payback",
+        )
+        self._start_date = None
+    def _handle_coordinator_update(self):
+        money = self.coordinator.data.get("money", {})
+        investment = self.coordinator.battery_investment
+        battery_total = (
+            money.get("battery_house", 0)
+            + money.get("battery_grid", 0)
+        )
+
+        if self._start_date is None:
+            self._start_date = dt_util.now()
+
+        annual = _calculate_annual_estimate(
+            battery_total,
+            self._start_date,
+        )
+        if investment <= 0 or annual <= 0:
+            self._value = None
+        else:
+            self._value = round(investment / annual, 2)
         self.async_write_ha_state()
 
 # -----------------------------

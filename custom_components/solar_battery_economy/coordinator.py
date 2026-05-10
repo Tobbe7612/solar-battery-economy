@@ -34,6 +34,8 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.import_price_entity = conf["import_price"]
         self.export_price_entity = conf["export_price"]
         self.investment = conf.get("investment", 0)
+        self.solar_investment = conf.get("solar_investment", 0)
+        self.battery_investment = conf.get("battery_investment", 0)
         self.co2_factor = conf.get("co2_factor", 0.4)
         self.currency = entry.options.get(
             "currency",

@@ -128,10 +128,40 @@ def _build_schema(defaults=None):
                 default=defaults.get(CONF_EXPORT_PRICE),
             ): price_selector,
 
-            # ----- Optional investment -----
+            # ----- Optional total investment -----
             vol.Optional(
                 CONF_INVESTMENT,
                 default=defaults.get(CONF_INVESTMENT, 0),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 1_000_000,
+                        "step": 100,
+                        "mode": "box",
+                    }
+                }
+            ),
+
+            # ----- Optional solar investment -----
+            vol.Optional(
+                "solar_investment",
+                default=defaults.get("solar_investment", 0),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 1_000_000,
+                        "step": 100,
+                        "mode": "box",
+                    }
+                }
+            ),
+
+            # ----- Optional battery investment -----
+            vol.Optional(
+                "battery_investment",
+                default=defaults.get("battery_investment", 0),
             ): selector(
                 {
                     "number": {
