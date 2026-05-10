@@ -76,6 +76,21 @@ These flows are integrated into accumulated **energy values (kWh)**.
 
 ### Financial Analysis
 
+The integration now supports separate financial tracking for:
+
+* Solar system performance
+* Battery system performance
+* Combined total system performance
+
+Including:
+
+* Solar annual savings
+* Battery annual savings
+* Solar ROI
+* Battery ROI
+* Solar payback time
+* Battery payback time
+
 The integration calculates:
 
 * Total savings
@@ -135,9 +150,10 @@ A custom Lovelace card is available for this integration, providing a real-time 
 
 The card displays:
 
-* Energy flows (solar, battery, grid)
-* Import and export prices
-* Savings and performance metrics
+* Real-time power flows
+* Solar/battery/grid interaction
+* Live electricity prices
+* System economy metrics
 
 👉 Get it here:
 https://github.com/tobbe7612/solar-battery-economy-flow-card
@@ -320,7 +336,25 @@ After installation, add the integration and select the required sensors:
 * Export electricity price
 * System investment cost
 
+Optional separate investment tracking can now be configured:
+
+* Total system investment
+* Solar investment
+* Battery investment
+
+This enables independent ROI and payback analysis for both the solar and battery systems.
+
 Advanced Mode can be enabled in the integration options.
+
+# Optional Battery Support
+
+The integration also works without a battery system.
+
+If no battery is installed:
+
+* Set the battery power sensor to a dummy sensor with value `0`
+* Battery-related sensors will remain at zero
+* Solar and grid analysis will continue working normally
 
 ## 💱 Currency Support
 
@@ -416,7 +450,35 @@ Created by **Tobbe7612**
 GitHub:
 https://github.com/Tobbe7612/solar-battery-economy
 
+# Changelog
 
+## v1.3.0
+
+### New Features
+
+* Added separate solar and battery investment tracking
+* Added solar and battery ROI sensors
+* Added solar and battery annual savings sensors
+* Added solar and battery payback sensors
+* Added import/export electricity price sensors
+* Added optional zero export price support
+* Added Lovelace flow card support
+
+### Improvements
+
+* Improved financial calculation consistency
+* Improved annual savings estimation
+* Improved payback calculations
+* Improved advanced mode handling
+* Improved sensor naming consistency
+
+### Fixes
+
+* Fixed incorrect total savings calculations
+* Fixed grid charging cost handling
+* Fixed entity naming inconsistencies
+* Fixed advanced mode sensor creation issues
+* Fixed multiple startup/reload edge cases
 
 
 
