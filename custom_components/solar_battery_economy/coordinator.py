@@ -41,9 +41,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             "currency",
             conf.get("currency", "SEK"),
 )
-
         self._last_update = None
         self._unsub_listeners = []
+        self.install_date = None
 
         # Persistent storage
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
@@ -60,14 +60,21 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
     # ---------------------------------------------------------
 
     async def async_restore(self):
-        """Restore energy and money totals from storage."""
+        """Restore energy, money and install date from storage."""
         stored = await self._store.async_load()
 
         if not stored:
+            self.install_date = dt_util.utcnow()
             return
 
         self.data["energy"] = stored.get("energy", {})
         self.data["money"] = stored.get("money", {})
+
+        install_date_str = stored.get("install_date")
+        if install_date_str:
+            self.install_date = dt_util.parse_datetime(install_date_str)
+        else:
+            self.install_date = dt_util.utcnow()
 
     async def _save_state(self):
         """Save current totals to storage."""
@@ -76,10 +83,24 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 {
                     "energy": self.data["energy"],
                     "money": self.data["money"],
+                    "install_date": self.install_date.isoformat()
+                        if self.install_date else None,
                 }
             )
         except Exception as err:
             _LOGGER.warning("Failed to save Solar Battery Economy state: %s", err)
+
+    def annual_estimate(self, total):
+        """Calculate annualized estimate using the persisted install date."""
+        if total <= 0 or self.install_date is None:
+            return 0
+        days_running = max(
+            (dt_util.utcnow() - self.install_date).total_seconds() / 86400,
+            0.01,
+        )
+        effective_days = max(days_running, 3)
+        daily_average = total / effective_days
+        return daily_average * 365
 
     # ---------------------------------------------------------
     # LISTENERS
@@ -124,8 +145,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
 
         try:
+            if self.install_date is None:
+                self.install_date = dt_util.utcnow()
             now = dt_util.utcnow()
-
             solar_w = _float_state(self.hass, self.solar_entity)
             grid_w = _float_state(self.hass, self.grid_entity)
             battery_w = _float_state(self.hass, self.battery_entity)
