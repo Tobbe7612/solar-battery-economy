@@ -452,6 +452,40 @@ https://github.com/Tobbe7612/solar-battery-economy
 
 # Changelog
 
+## v1.3.1
+
+### Fix: Payback sensors resetting on every restart
+
+Payback Time, Estimated Payback Date, and all Estimated Annual Savings
+sensors were extrapolating annual savings using a start date held in memory
+per sensor. Since this date was reset to "now" on every Home Assistant
+restart or integration reload — while accumulated totals persisted across
+restarts as intended — the annualized estimates spiked or dipped sharply
+right after every restart.
+
+This fix persists a single `install_date` in the integration's storage
+(alongside the existing energy/money totals) and centralizes the
+annualization logic in the coordinator, so all payback-related sensors now
+share one consistent, restart-safe reference point.
+
+**Changes:**
+- Added persistent `install_date` to `coordinator.py`, saved/restored via
+  the existing `Store`.
+- Added `coordinator.annual_estimate()` as the single source of truth for
+  annualized projections.
+- Updated `PaybackSensor`, `PaybackDateSensor`, `SolarPaybackSensor`,
+  `BatteryPaybackSensor`, `AnnualSavingsSensor`, `SolarAnnualSavingsSensor`,
+  and `BatteryAnnualSavingsSensor` to use it instead of a local per-sensor
+  timestamp.
+- Removed a fragile workaround in `AnnualSavingsSensor` that read its start
+  date from another sensor's entity attributes via a hardcoded entity ID.
+
+**For existing users:** your `install_date` will initially be set to the
+date you update to this version, not your real system install date. See
+the README's "Updating your install date" section if you want your payback
+estimates to reflect your true installation date immediately rather than
+converging over time.
+
 ## v1.3.0
 
 ### New Features
