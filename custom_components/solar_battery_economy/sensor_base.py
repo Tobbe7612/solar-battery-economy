@@ -1,6 +1,6 @@
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.components.sensor import SensorEntity
-from .const import DOMAIN, DEFAULT_NAME
+from .const import DOMAIN, DEFAULT_NAME, INTEGRATION_VERSION
 
 
 class EconomySensor(CoordinatorEntity, SensorEntity):
@@ -32,7 +32,7 @@ class EconomySensor(CoordinatorEntity, SensorEntity):
             "name": device_name,
             "manufacturer": "Tobbe",
             "model": "Solar Battery Economy",
-            "sw_version": entry.version,
+            "sw_version": INTEGRATION_VERSION,
         }
 
     @property

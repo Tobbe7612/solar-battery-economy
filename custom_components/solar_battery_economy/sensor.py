@@ -51,6 +51,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("grid_house", "Money Grid-House"),
         ("grid_battery", "Money Grid-Battery"),
         ("house_grid", "Money House-Grid"),
+        ("battery_house_from_solar", "Money Battery-House (from Solar)"),
+        ("battery_house_from_grid", "Money Battery-House (from Grid)"),
+        ("battery_grid_from_solar", "Money Battery-Export (from Solar)"),
+        ("battery_grid_from_grid", "Money Battery-Export (from Grid)"),
     ]
     if advanced_mode:
         for key, name in money_keys:
@@ -101,6 +105,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(GridIndependenceSensor(coordinator, hass, entry))
     sensors.append(SolarSelfConsumptionSensor(coordinator, hass, entry))
     sensors.append(CO2SavedSensor(coordinator, hass, entry))
+    sensors.append(PriceDataIssuesSensor(coordinator, hass, entry))
     sensors.append(PeriodEconomySensor(coordinator, hass, entry, "03 Savings Today", "day"))
     sensors.append(PeriodEconomySensor(coordinator, hass, entry, "04 Savings This Month", "month"))
     sensors.append(PeriodEconomySensor(coordinator, hass, entry, "05 Savings This Year", "year"))
@@ -200,17 +205,6 @@ class MoneySensor(EconomySensor, RestoreEntity):
         self._value = round(self.coordinator.data["money"].get(self._key, 0), 2)
         self.async_write_ha_state()
 
-def _calculate_total_economy(money: dict) -> float:
-    return (
-        money.get("solar_house", 0)
-        + money.get("battery_house", 0)
-        + money.get("solar_export", 0)
-        + money.get("battery_grid", 0)
-        + money.get("house_grid", 0)
-        - money.get("grid_battery", 0)
-        - money.get("grid_house", 0)
-    )
-
 def _calculate_annual_estimate(total, start_date):
     """Calculate annual estimate based on runtime."""
     if total <= 0 or start_date is None:
@@ -252,9 +246,6 @@ class PeriodEconomySensor(EconomySensor, RestoreEntity):
             if last_reset:
                 from homeassistant.util.dt import parse_datetime
                 self._last_reset = parse_datetime(last_reset)
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
     def _needs_reset(self, now):
         if self._last_reset is None:
             return False
@@ -658,7 +649,7 @@ class BatteryUtilizationSensor(EconomySensor):
         if battery_charge < 0.1:
             self._value = 0
         else:
-            self._value = round((battery_discharge / battery_charge) * 100, 1)
+            self._value = round(min((battery_discharge / battery_charge) * 100, 100), 1)
         self.async_write_ha_state()
 
 # -----------------------------
@@ -703,8 +694,12 @@ class SolarSavingsSensor(EconomySensor):
 
         solar_house = money.get("solar_house", 0)
         solar_export = money.get("solar_export", 0)
+        solar_via_battery = (
+            money.get("battery_house_from_solar", 0)
+            + money.get("battery_grid_from_solar", 0)
+        )
 
-        self._value = round(solar_house + solar_export, 2)
+        self._value = round(solar_house + solar_export + solar_via_battery, 2)
 
         self.async_write_ha_state()
 
@@ -723,10 +718,12 @@ class BatterySavingsSensor(EconomySensor):
     def _handle_coordinator_update(self):
         money = self.coordinator.data.get("money", {})
 
-        battery_house = money.get("battery_house", 0)
-        battery_grid = money.get("battery_grid", 0)
+        battery_from_grid = (
+            money.get("battery_house_from_grid", 0)
+            + money.get("battery_grid_from_grid", 0)
+        )
 
-        self._value = round(battery_house + battery_grid, 2)
+        self._value = round(battery_from_grid, 2)
 
         self.async_write_ha_state()
 
@@ -753,6 +750,8 @@ class SolarAnnualSavingsSensor(EconomySensor):
         solar_total = (
             money.get("solar_house", 0)
             + money.get("solar_export", 0)
+            + money.get("battery_house_from_solar", 0)
+            + money.get("battery_grid_from_solar", 0)
         )
         annual = self.coordinator.annual_estimate(solar_total)
         self._value = round(annual, 2)
@@ -779,8 +778,8 @@ class BatteryAnnualSavingsSensor(EconomySensor):
     def _handle_coordinator_update(self):
         money = self.coordinator.data.get("money", {})
         battery_total = (
-            money.get("battery_house", 0)
-            + money.get("battery_grid", 0)
+            money.get("battery_house_from_grid", 0)
+            + money.get("battery_grid_from_grid", 0)
         )
         annual = self.coordinator.annual_estimate(battery_total)
         self._value = round(annual, 2)
@@ -808,6 +807,8 @@ class SolarROISensor(EconomySensor):
         total = (
             money.get("solar_house", 0)
             + money.get("solar_export", 0)
+            + money.get("battery_house_from_solar", 0)
+            + money.get("battery_grid_from_solar", 0)
         )
         if investment <= 0:
             self._value = 0
@@ -835,8 +836,8 @@ class BatteryROISensor(EconomySensor):
         money = self.coordinator.data.get("money", {})
         investment = self.coordinator.battery_investment
         total = (
-            money.get("battery_house", 0)
-            + money.get("battery_grid", 0)
+            money.get("battery_house_from_grid", 0)
+            + money.get("battery_grid_from_grid", 0)
         )
         if investment <= 0:
             self._value = 0
@@ -865,6 +866,8 @@ class SolarPaybackSensor(EconomySensor):
         solar_total = (
             money.get("solar_house", 0)
             + money.get("solar_export", 0)
+            + money.get("battery_house_from_solar", 0)
+            + money.get("battery_grid_from_solar", 0)
         )
         annual = self.coordinator.annual_estimate(solar_total)
         if investment <= 0 or annual <= 0:
@@ -892,8 +895,8 @@ class BatteryPaybackSensor(EconomySensor):
         money = self.coordinator.data.get("money", {})
         investment = self.coordinator.battery_investment
         battery_total = (
-            money.get("battery_house", 0)
-            + money.get("battery_grid", 0)
+            money.get("battery_house_from_grid", 0)
+            + money.get("battery_grid_from_grid", 0)
         )
         annual = self.coordinator.annual_estimate(battery_total)
         if investment <= 0 or annual <= 0:
@@ -963,4 +966,27 @@ class BatterySelfConsumptionSensor(EconomySensor):
 
         self._value = round(battery_house, 2)
 
+        self.async_write_ha_state()
+
+# -----------------------------
+# Price Data Issues – diagnostic counter
+# -----------------------------
+class PriceDataIssuesSensor(EconomySensor):
+    _attr_native_unit_of_measurement = "times"
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = "total_increasing"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "90 Price Data Issues",
+            "price_data_issues",
+            sensor_type="diagnostic",
+        )
+
+    def _handle_coordinator_update(self):
+        self._value = self.coordinator.data.get("price_unavailable_count", 0)
         self.async_write_ha_state()

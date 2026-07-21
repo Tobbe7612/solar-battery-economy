@@ -28,3 +28,12 @@ def calculate_savings(money):
         "battery_house": battery_house,
         "total": total,
     }
+def battery_solar_share(energy):
+    """Share (0-1) of cumulative battery charge energy that came from solar,
+    used to split battery discharge value between solar and grid origin."""
+    solar_in = energy.get("solar_battery", 0)
+    grid_in = energy.get("grid_battery", 0)
+    total_in = solar_in + grid_in
+    if total_in <= 0:
+        return 0
+    return solar_in / total_in

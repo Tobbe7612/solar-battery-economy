@@ -9,7 +9,7 @@ from homeassistant.helpers.storage import Store
 from .sensor_helpers import _float_state
 from .flow_calculation import calculate_flows
 from .const import DOMAIN
-from .economy_calculations import calculate_savings
+from .economy_calculations import calculate_savings, battery_solar_share
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self._last_update = None
         self._unsub_listeners = []
         self.install_date = None
+        self._battery_split_migrated = False
 
         # Persistent storage
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
@@ -76,6 +77,28 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         else:
             self.install_date = dt_util.utcnow()
 
+        # One-time migration: backfill the solar/grid split for existing
+        # installs. Tracked with a persisted flag rather than "does the key
+        # exist", since the live accumulation loop creates these keys itself
+        # (starting near-zero) as soon as the battery discharges once - which
+        # would otherwise block this backfill from ever running.
+        if not stored.get("battery_split_migrated"):
+            money = self.data["money"]
+            energy = self.data["energy"]
+            share = battery_solar_share(energy)
+
+            bh_total = money.get("battery_house", 0)
+            money["battery_house_from_solar"] = round(bh_total * share, 6)
+            money["battery_house_from_grid"] = round(bh_total * (1 - share), 6)
+
+            bg_total = money.get("battery_grid", 0)
+            money["battery_grid_from_solar"] = round(bg_total * share, 6)
+            money["battery_grid_from_grid"] = round(bg_total * (1 - share), 6)
+
+            self._battery_split_migrated = True
+        else:
+            self._battery_split_migrated = True
+
     async def _save_state(self):
         """Save current totals to storage."""
         try:
@@ -85,6 +108,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                     "money": self.data["money"],
                     "install_date": self.install_date.isoformat()
                         if self.install_date else None,
+                    "battery_split_migrated": self._battery_split_migrated,
                 }
             )
         except Exception as err:
@@ -165,32 +189,79 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
             self._last_update = now
 
-            import_price = _float_state(self.hass, self.import_price_entity) or 0
-            export_price = _float_state(self.hass, self.export_price_entity) or 0
+            import_price_raw = _float_state(self.hass, self.import_price_entity)
+            export_price_raw = _float_state(self.hass, self.export_price_entity)
 
             energy = self.data["energy"]
             money = self.data["money"]
 
+            # Energy always accumulates, regardless of price availability
             for flow_key, power in flows.items():
-
                 base_key = flow_key.replace("_power", "")
                 delta_kwh = max(power, 0) * dt_hours / 1000
-
-                # ENERGY
                 energy[base_key] = round(energy.get(base_key, 0) + delta_kwh, 6)
 
-                # MONEY
-                if flow_key in ("solar_house_power", "battery_house_power"):
-                    money[base_key] = round(money.get(base_key, 0) + delta_kwh * import_price, 6)
+            if import_price_raw is None or export_price_raw is None:
+                # Price source unavailable this cycle - skip money booking
+                # entirely rather than treating the energy as free.
+                self.data["price_unavailable_count"] = (
+                    self.data.get("price_unavailable_count", 0) + 1
+                )
+                _LOGGER.debug(
+                    "Skipped money accumulation: import or export price unavailable"
+                )
+            else:
+                import_price = import_price_raw
+                export_price = export_price_raw
+                solar_share = battery_solar_share(energy)
 
-                elif flow_key in ("solar_export_power", "battery_grid_power"):
-                    money[base_key] = round(money.get(base_key, 0) + delta_kwh * export_price, 6)
+                for flow_key, power in flows.items():
+                    base_key = flow_key.replace("_power", "")
+                    delta_kwh = max(power, 0) * dt_hours / 1000
 
-                elif flow_key in ("grid_house_power", "grid_battery_power"):
-                    money[base_key] = round(money.get(base_key, 0) + delta_kwh * import_price, 6)
+                    if flow_key == "solar_house_power":
+                        money[base_key] = round(
+                            money.get(base_key, 0) + delta_kwh * import_price, 6
+                        )
 
-                elif flow_key == "house_grid_power":
-                    money[base_key] = round(money.get(base_key, 0) + delta_kwh * export_price, 6)
+                    elif flow_key == "battery_house_power":
+                        value = delta_kwh * import_price
+                        money[base_key] = round(money.get(base_key, 0) + value, 6)
+                        money["battery_house_from_solar"] = round(
+                            money.get("battery_house_from_solar", 0)
+                            + value * solar_share, 6,
+                        )
+                        money["battery_house_from_grid"] = round(
+                            money.get("battery_house_from_grid", 0)
+                            + value * (1 - solar_share), 6,
+                        )
+
+                    elif flow_key == "solar_export_power":
+                        money[base_key] = round(
+                            money.get(base_key, 0) + delta_kwh * export_price, 6
+                        )
+
+                    elif flow_key == "battery_grid_power":
+                        value = delta_kwh * export_price
+                        money[base_key] = round(money.get(base_key, 0) + value, 6)
+                        money["battery_grid_from_solar"] = round(
+                            money.get("battery_grid_from_solar", 0)
+                            + value * solar_share, 6,
+                        )
+                        money["battery_grid_from_grid"] = round(
+                            money.get("battery_grid_from_grid", 0)
+                            + value * (1 - solar_share), 6,
+                        )
+
+                    elif flow_key in ("grid_house_power", "grid_battery_power"):
+                        money[base_key] = round(
+                            money.get(base_key, 0) + delta_kwh * import_price, 6
+                        )
+
+                    elif flow_key == "house_grid_power":
+                        money[base_key] = round(
+                            money.get(base_key, 0) + delta_kwh * export_price, 6
+                        )
 
             self.data["savings"] = calculate_savings(money)
 
