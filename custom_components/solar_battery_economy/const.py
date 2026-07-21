@@ -18,4 +18,4 @@ CONF_BATTERY_POWER: Final = "battery_power"
 CONF_IMPORT_PRICE: Final = "import_price"
 CONF_EXPORT_PRICE: Final = "export_price"
 CONF_INVESTMENT: Final = "investment"
-INTEGRATION_VERSION = "1.3.1"  # keep in sync with manifest.json's "version" field
+INTEGRATION_VERSION = "1.4.0"  # keep in sync with manifest.json's "version" field
