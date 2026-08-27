@@ -1,0 +1,28 @@
+# Home Assistant
+*.db
+*.log
+home-assistant.log
+home-assistant_v2.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Backup files
+*.zip
+*.tar
+*.bak
+
+# Temporary files
+*.tmp
+*.swp

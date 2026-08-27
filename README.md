@@ -1,0 +1,521 @@
+# Solar Battery Economy
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tobbe7612/solar-battery-economy/main/images/architecture.png" width="900">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tobbe7612/solar-battery-economy/main/images/icon.png" width="160">
+</p>
+
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
+[![License](https://img.shields.io/github/license/Tobbe7612/solar-battery-economy)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/Tobbe7612/solar-battery-economy)](https://github.com/Tobbe7612/solar-battery-economy/releases)
+[![Downloads](https://img.shields.io/github/downloads/Tobbe7612/solar-battery-economy/total.svg)](https://github.com/Tobbe7612/solar-battery-economy/releases)
+[![GitHub stars](https://img.shields.io/github/stars/Tobbe7612/solar-battery-economy.svg?style=social)](https://github.com/Tobbe7612/solar-battery-economy)
+
+**Solar Battery Economy** is a Home Assistant custom integration that analyzes the real economic performance of a **solar + battery energy system**.
+
+
+It calculates energy flows, financial savings, ROI, and performance indicators based on real-time power measurements and electricity prices.
+
+The integration converts power flows into accumulated **kWh**, **SEK**, and **system performance metrics** to show the true value of your solar and battery system.
+
+## ⚠️ Financial Model Update (v1.2.0)
+
+Starting from version **v1.2.0**, the financial model has been improved to correctly account for battery charging from the grid.
+
+In earlier versions, energy used to charge the battery from the grid was not fully treated as a cost.
+This could lead to:
+
+* Overestimated savings
+* Overestimated annual projections
+* Unrealistically short payback times
+
+### ✅ What’s improved
+
+* Battery charging from grid is now correctly included as a cost
+* Savings calculations now reflect real-world economics
+* Annual savings and payback time are more accurate
+
+### 🔄 Important for existing users
+
+If you are upgrading from an older version:
+
+**Recommended:**
+
+1. Remove the integration
+2. Restart Home Assistant
+3. Add the integration again
+
+This ensures all calculations start from clean, correct data.
+
+If you choose not to reset:
+
+* Values will stabilize over time
+* Short-term values may appear inconsistent
+
+This update improves accuracy and reliability of all financial metrics.
+---
+# Features
+
+### Energy Flow Analysis
+
+The integration calculates the following power flows:
+
+* Solar → House
+* Solar → Battery
+* Solar → Export
+* Battery → House
+* Battery → Grid
+* Grid → House
+* Grid → Battery
+* House → Grid
+
+These flows are integrated into accumulated **energy values (kWh)**.
+
+---
+
+### Financial Analysis
+
+The integration now supports separate financial tracking for:
+
+* Solar system performance
+* Battery system performance
+* Combined total system performance
+
+Including:
+
+* Solar annual savings
+* Battery annual savings
+* Solar ROI
+* Battery ROI
+* Solar payback time
+* Battery payback time
+
+The integration calculates:
+
+* Total savings
+* Estimated annual savings
+* Return on investment (ROI)
+* Payback time
+* Estimated payback date
+* Effective electricity price
+
+It also breaks down savings by source:
+
+* Solar savings
+* Battery savings
+* Export income
+* Battery arbitrage profit
+* Battery self-consumption value
+
+---
+
+### System Performance Metrics
+
+Performance indicators include:
+
+* Grid Independence (%)
+* Solar Self-Consumption Rate (%)
+* Battery Utilization (%)
+* CO₂ saved
+
+---
+
+### Time-Based Savings
+
+Savings are tracked over time:
+
+* Savings Today
+* Savings This Month
+* Savings This Year
+
+---
+
+### Advanced Mode
+
+Advanced Mode enables diagnostic sensors for deeper analysis:
+
+* Detailed money flows
+* Savings breakdown sensors
+* Battery arbitrage
+* Internal energy flows
+
+This keeps the default UI clean while still allowing advanced analysis.
+
+---
+
+## 🎉 Solar Battery Flow Card (New)
+
+A custom Lovelace card is available for this integration, providing a real-time visual overview of your system.
+
+The card displays:
+
+* Real-time power flows
+* Solar/battery/grid interaction
+* Live electricity prices
+* System economy metrics
+
+👉 Get it here:
+https://github.com/tobbe7612/solar-battery-economy-flow-card
+
+This card is designed specifically for this integration and gives a clear and intuitive overview of your energy system.
+
+---
+
+# Required Input Sensors
+
+The integration requires **five input sensors**.
+
+| Input         | Description                    |
+| ------------- | ------------------------------ |
+| Solar Power   | Current solar production       |
+| Grid Power    | Net grid import/export         |
+| Battery Power | Battery charge/discharge power |
+| Import Price  | Electricity purchase price     |
+| Export Price  | Electricity export price       |
+
+---
+
+# Power Sensor Requirements
+
+All power sensors must report **instantaneous power in Watts (W)**.
+
+### Solar Power
+
+Must be **positive when producing power**.
+
+Example:
+
+```
+Solar producing 3500 W → sensor = 3500
+```
+
+---
+
+### Grid Power (Important)
+
+The grid sensor must follow this convention:
+
+```
+Negative  = importing electricity
+Positive  = exporting electricity
+```
+
+Example:
+
+```
+Importing 1200 W from grid → -1200
+Exporting 800 W to grid → 800
+```
+
+⚠️ Note:
+Some systems use the opposite convention:
+
+```
+Positive = import
+Negative = export
+```
+
+If your sensor follows this, you must invert it in Home Assistant.
+
+Example template:
+
+```
+template:
+  - sensor:
+      - name: "Grid Power Corrected"
+        unit_of_measurement: "W"
+        state: "{{ states('sensor.your_grid_sensor') | float * -1 }}"
+```
+
+---
+
+### Battery Power
+
+Battery power must follow this convention:
+
+```
+Positive  = battery discharging
+Negative  = battery charging
+```
+
+Example:
+
+```
+Battery powering house → 1500
+Battery charging → -900
+```
+
+---
+
+### Electricity Price Sensors
+
+Both price sensors must report **price per kWh**.
+
+Example:
+
+```
+Import price → 2.35 SEK/kWh
+Export price → 0.85 SEK/kWh
+```
+
+---
+
+# Financial Model
+
+Savings are calculated as:
+
+```
+Savings =
+Baseline cost (without solar/battery)
+− Actual grid cost
++ Export income
+```
+
+All calculations are based on **real-time power integration**, avoiding historical recalculation errors.
+
+---
+
+# Effective Electricity Price
+
+The integration calculates the **real average electricity price you paid** after solar and battery savings:
+
+```
+Effective Price =
+Total Grid Cost / Grid Energy Used
+```
+
+This shows the real cost of electricity after self-consumption and battery usage.
+
+---
+
+# Installation
+
+### HACS (Recommended)
+
+1. Open **HACS**
+2. Go to **Integrations**
+3. Add custom repository:
+
+```
+https://github.com/Tobbe7612/solar-battery-economy
+```
+
+4. Install **Solar Battery Economy**
+5. Restart Home Assistant
+
+---
+
+### Manual Installation
+
+1. Copy the folder
+
+```
+custom_components/solar_battery_economy
+```
+
+into your Home Assistant
+
+```
+/config/custom_components/
+```
+
+2. Restart Home Assistant
+3. Add the integration via **Settings → Devices & Services**
+
+---
+
+# Configuration
+
+After installation, add the integration and select the required sensors:
+
+* Solar power sensor
+* Grid power sensor
+* Battery power sensor
+* Import electricity price
+* Export electricity price
+* System investment cost
+
+Optional separate investment tracking can now be configured:
+
+* Total system investment
+* Solar investment
+* Battery investment
+
+This enables independent ROI and payback analysis for both the solar and battery systems.
+
+Advanced Mode can be enabled in the integration options.
+
+## Optional Battery Support
+
+The integration also works without a battery system.
+
+If no battery is installed:
+
+* Set the battery power sensor to a dummy sensor with value `0`
+* Battery-related sensors will remain at zero
+* Solar and grid analysis will continue working normally
+
+## 💱 Currency Support
+
+The integration supports multiple currencies.
+
+You can select your currency during setup:
+
+- SEK (Swedish Krona)
+- EUR (€ Euro)
+- USD ($ US Dollar)
+- NOK (Norwegian Krone)
+- DKK (Danish Krone)
+- GBP (£ British Pound)
+
+⚠️ Important:
+The selected currency must match your electricity price sensors.
+
+⚠️ The integration does not convert currencies. It only changes the displayed unit.
+
+Example:
+- If using EUR → price sensors must be €/kWh
+- If using SEK → price sensors must be SEK/kWh
+
+The integration calculates:
+Energy (kWh) × Price (currency/kWh) = Money (currency)
+
+---
+
+# Device Structure
+
+The integration creates two devices:
+
+### Energy System
+
+Contains energy flow sensors:
+
+* Power flows
+* Energy flows
+* Grid independence
+* Solar self-consumption
+* Battery utilization
+* CO₂ saved
+
+---
+
+### Financial System
+
+Contains financial analytics:
+
+* Total savings
+* Annual savings
+* Payback
+* ROI
+* Solar vs battery savings
+* Effective electricity price
+
+---
+
+# Example Metrics
+
+Typical values for a solar + battery system:
+
+| Metric                 | Example    |
+| ---------------------- | ---------- |
+| Grid Independence      | 65 %       |
+| Solar Self-Consumption | 82 %       |
+| Battery Utilization    | 75 %       |
+| Annual Savings         | 27,000 SEK |
+| Payback Time           | 5.4 years  |
+
+---
+
+# Requirements
+
+Home Assistant version:
+
+```
+2023.8+
+```
+
+---
+
+# License
+
+MIT License
+
+---
+
+# Author
+
+Created by **Tobbe7612**
+
+GitHub:
+https://github.com/Tobbe7612/solar-battery-economy
+
+# Changelog
+
+## v1.3.1
+
+### Fix: Payback sensors resetting on every restart
+
+Payback Time, Estimated Payback Date, and all Estimated Annual Savings
+sensors were extrapolating annual savings using a start date held in memory
+per sensor. Since this date was reset to "now" on every Home Assistant
+restart or integration reload — while accumulated totals persisted across
+restarts as intended — the annualized estimates spiked or dipped sharply
+right after every restart.
+
+This fix persists a single `install_date` in the integration's storage
+(alongside the existing energy/money totals) and centralizes the
+annualization logic in the coordinator, so all payback-related sensors now
+share one consistent, restart-safe reference point.
+
+**Changes:**
+- Added persistent `install_date` to `coordinator.py`, saved/restored via
+  the existing `Store`.
+- Added `coordinator.annual_estimate()` as the single source of truth for
+  annualized projections.
+- Updated `PaybackSensor`, `PaybackDateSensor`, `SolarPaybackSensor`,
+  `BatteryPaybackSensor`, `AnnualSavingsSensor`, `SolarAnnualSavingsSensor`,
+  and `BatteryAnnualSavingsSensor` to use it instead of a local per-sensor
+  timestamp.
+- Removed a fragile workaround in `AnnualSavingsSensor` that read its start
+  date from another sensor's entity attributes via a hardcoded entity ID.
+
+**For existing users:** your `install_date` will initially be set to the
+date you update to this version, not your real system install date. See
+the README's "Updating your install date" section if you want your payback
+estimates to reflect your true installation date immediately rather than
+converging over time.
+
+## v1.3.0
+
+### New Features
+
+* Added separate solar and battery investment tracking
+* Added solar and battery ROI sensors
+* Added solar and battery annual savings sensors
+* Added solar and battery payback sensors
+* Added import/export electricity price sensors
+* Added optional zero export price support
+* Added Lovelace flow card support
+
+### Improvements
+
+* Improved financial calculation consistency
+* Improved annual savings estimation
+* Improved payback calculations
+* Improved advanced mode handling
+* Improved sensor naming consistency
+
+### Fixes
+
+* Fixed incorrect total savings calculations
+* Fixed grid charging cost handling
+* Fixed entity naming inconsistencies
+* Fixed advanced mode sensor creation issues
+* Fixed multiple startup/reload edge cases
+
+
+
+
+
+
