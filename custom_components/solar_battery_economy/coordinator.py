@@ -10,6 +10,7 @@ from .sensor_helpers import _float_state
 from .flow_calculation import calculate_flows
 from .const import DOMAIN
 from .economy_calculations import calculate_savings, battery_solar_share
+from .price_source import normalize_price_source
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +32,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.solar_entity = conf["solar_power"]
         self.grid_entity = conf["grid_power"]
         self.battery_entity = conf["battery_power"]
-        self.import_price_entity = conf["import_price"]
-        self.export_price_entity = conf["export_price"]
+        self.price_source_entity = conf["price_source"]
         self.investment = conf.get("investment", 0)
         self.solar_investment = conf.get("solar_investment", 0)
         self.battery_investment = conf.get("battery_investment", 0)
@@ -144,8 +144,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             self.solar_entity,
             self.grid_entity,
             self.battery_entity,
-            self.import_price_entity,
-            self.export_price_entity,
+            self.price_source_entity,
         ]
 
         unsub = async_track_state_change_event(
@@ -204,8 +203,26 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
             self._last_update = now
 
-            import_price_raw = _float_state(self.hass, self.import_price_entity)
-            export_price_raw = _float_state(self.hass, self.export_price_entity)
+            price_state = self.hass.states.get(self.price_source_entity)
+
+            if price_state is None:
+                price_model = {"current": None, "forecast": []}
+            else:
+                price_model = normalize_price_source(
+                    price_state.attributes,
+                    now=now,
+                )
+
+            current_price = price_model["current"]
+
+            if current_price is None:
+                import_price_raw = None
+                export_price_raw = None
+            else:
+                import_price_raw = current_price["import"]
+                export_price_raw = current_price["export"]
+
+            self.data["price"] = price_model
 
             energy = self.data["energy"]
             money = self.data["money"]
