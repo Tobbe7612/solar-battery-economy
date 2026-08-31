@@ -27,6 +27,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("grid_house_power", "Power Grid-House"),
         ("grid_battery_power", "Power Grid-Battery"),
         ("house_grid_power", "Power House-Grid"),
+        ("house_total", "Power House Total"),
     ]
     for key, name in power_keys:
         sensors.append(FlowPowerSensor(coordinator, hass, entry, name, key, sensor_type="power"))
@@ -40,6 +41,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("grid_house", "Energy Grid-House"),
         ("grid_battery", "Energy Grid-Battery"),
         ("house_grid", "Energy House-Grid"),
+        ("house_total", "Energy House Total"),
     ]
     for key, name in energy_keys:
         sensors.append(EnergySensor(coordinator, hass, entry, name, key, sensor_type="energy"))

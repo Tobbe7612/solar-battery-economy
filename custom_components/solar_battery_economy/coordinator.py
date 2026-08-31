@@ -185,6 +185,14 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
             flows = calculate_flows(solar_w, grid_w, battery_w)
             self.data["power"] = flows
+            # Canonical total house power.
+            # Derived directly from the existing directional house flows.
+            self.data["power"]["house_total"] = round(
+                flows.get("solar_house_power", 0)
+                + flows.get("battery_house_power", 0)
+                + flows.get("grid_house_power", 0),
+                3,
+            )
 
             if self._last_update is None:
                 self._last_update = now
@@ -269,7 +277,14 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                         money[base_key] = round(
                             money.get(base_key, 0) + delta_kwh * export_price, 6
                         )
-
+            # Canonical cumulative total house energy.
+            # Derived from the three existing accumulated house flows.
+            energy["house_total"] = round(
+                energy.get("solar_house", 0)
+                + energy.get("battery_house", 0)
+                + energy.get("grid_house", 0),
+                6,
+            )
             self.data["savings"] = calculate_savings(money)
 
             # Save totals to storage
