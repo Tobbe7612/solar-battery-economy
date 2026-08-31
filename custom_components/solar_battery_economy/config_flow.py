@@ -10,8 +10,7 @@ from .const import (
     CONF_SOLAR_POWER,
     CONF_GRID_POWER,
     CONF_BATTERY_POWER,
-    CONF_IMPORT_PRICE,
-    CONF_EXPORT_PRICE,
+    CONF_PRICE_SOURCE,
     CONF_INVESTMENT,
 )
 
@@ -117,15 +116,10 @@ def _build_schema(defaults=None):
                 default=defaults.get(CONF_BATTERY_POWER),
             ): power_selector,
 
-            # ----- Price sensors -----
+            # ----- Price source -----
             vol.Required(
-                CONF_IMPORT_PRICE,
-                default=defaults.get(CONF_IMPORT_PRICE),
-            ): price_selector,
-
-            vol.Required(
-                CONF_EXPORT_PRICE,
-                default=defaults.get(CONF_EXPORT_PRICE),
+                CONF_PRICE_SOURCE,
+                default=defaults.get(CONF_PRICE_SOURCE),
             ): price_selector,
 
             # ----- Optional total investment -----

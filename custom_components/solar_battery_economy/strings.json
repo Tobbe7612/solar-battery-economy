@@ -9,8 +9,7 @@
           "solar_power": "Solar production power sensor",
           "grid_power": "Grid power sensor",
           "battery_power": "Battery power sensor",
-          "import_price": "Electricity import price sensor",
-          "export_price": "Electricity export price sensor",
+          "price_source": "Electricity price source sensor",
           "investment": "System investment cost (SEK)",
           "co2_factor": "Grid CO₂ factor (kg per kWh)",
           "advanced_mode": "Enable Advanced / Diagnostic Mode"
@@ -29,8 +28,7 @@
           "solar_power": "Solar production power sensor",
           "grid_power": "Grid power sensor",
           "battery_power": "Battery power sensor",
-          "import_price": "Electricity import price sensor",
-          "export_price": "Electricity export price sensor",
+          "price_source": "Electricity price source sensor",
           "investment": "System investment cost (SEK)",
           "co2_factor": "Grid CO₂ factor (kg per kWh)",
           "advanced_mode": "Enable Advanced / Diagnostic Mode"
