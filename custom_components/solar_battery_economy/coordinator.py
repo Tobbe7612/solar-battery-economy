@@ -50,10 +50,17 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self._store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}")
 
         self.data = {
+            # Existing public data — do not rename or remove.
             "power": {},
             "energy": {},
             "money": {},
             "savings": {},
+
+            # Phase 3 data model — populated incrementally in later phases.
+            "house": {},
+            "price": {},
+            "price_intelligence": {},
+            "consumers": {},
         }
 
     # ---------------------------------------------------------
