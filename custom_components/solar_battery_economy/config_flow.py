@@ -1,9 +1,12 @@
 """Config flow for Solar Battery Economy."""
 from __future__ import annotations
+
 import voluptuous as vol
+
 from homeassistant import config_entries
-from homeassistant.helpers.selector import selector
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.selector import selector
+
 from .const import (
     DOMAIN,
     DEFAULT_NAME,
@@ -12,6 +15,14 @@ from .const import (
     CONF_BATTERY_POWER,
     CONF_PRICE_SOURCE,
     CONF_INVESTMENT,
+    DEFAULT_VERY_CHEAP_LIMIT,
+    DEFAULT_CHEAP_LIMIT,
+    DEFAULT_NORMAL_LIMIT,
+    DEFAULT_EXPENSIVE_LIMIT,
+    CONF_VERY_CHEAP_LIMIT,
+    CONF_CHEAP_LIMIT,
+    CONF_NORMAL_LIMIT,
+    CONF_EXPENSIVE_LIMIT,
 )
 
 
@@ -20,33 +31,40 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
+
     @staticmethod
     def async_get_options_flow(config_entry):
         return SolarBatteryEconomyOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None):
-        """Initial step for user setup."""
+        """Handle the initial setup step."""
         errors = {}
 
         if user_input is not None:
-            # Prevent duplicate configuration
+            # Prevent duplicate configuration.
             unique_id = DOMAIN
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
-            # Basic validation: prevent identical sensors
+            # Basic validation: prevent identical power sensors.
             sensors = {
                 user_input[CONF_SOLAR_POWER],
                 user_input[CONF_GRID_POWER],
                 user_input[CONF_BATTERY_POWER],
             }
+
             if len(sensors) < 3:
                 errors["base"] = "duplicate_power_sensors"
             else:
-                return self.async_create_entry(
-                    title=DEFAULT_NAME,
-                    data=user_input,
-                )
+                threshold_error = _validate_price_thresholds(user_input)
+
+                if threshold_error is not None:
+                    errors["base"] = threshold_error
+                else:
+                    return self.async_create_entry(
+                        title=DEFAULT_NAME,
+                        data=user_input,
+                    )
 
         return self.async_show_form(
             step_id="user",
@@ -56,28 +74,85 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
-    """Options flow for Solar Battery Economy."""
+    """Handle options updates for Solar Battery Economy."""
 
     def __init__(self, entry):
         self.entry = entry
 
     async def async_step_init(self, user_input=None):
         """Handle options update."""
+        errors = {}
+
         if user_input is not None:
-            await self.hass.config_entries.async_reload(self.entry.entry_id)
-            return self.async_create_entry(title="", data=user_input)
+            threshold_error = _validate_price_thresholds(user_input)
+
+            if threshold_error is not None:
+                errors["base"] = threshold_error
+            else:
+                # Save options first. The entry will then be reloaded using
+                # the newly saved configuration.
+                return self.async_create_entry(
+                    title="",
+                    data=user_input,
+                )
 
         defaults = self.entry.options or self.entry.data
 
         return self.async_show_form(
             step_id="init",
             data_schema=_build_schema(defaults),
+            errors=errors,
         )
+
+
+# ======================================================
+# Validation
+# ======================================================
+
+
+def _validate_price_thresholds(user_input) -> str | None:
+    """Validate that price classification thresholds are strictly increasing."""
+    very_cheap = float(
+        user_input.get(
+            CONF_VERY_CHEAP_LIMIT,
+            DEFAULT_VERY_CHEAP_LIMIT,
+        )
+    )
+    cheap = float(
+        user_input.get(
+            CONF_CHEAP_LIMIT,
+            DEFAULT_CHEAP_LIMIT,
+        )
+    )
+    normal = float(
+        user_input.get(
+            CONF_NORMAL_LIMIT,
+            DEFAULT_NORMAL_LIMIT,
+        )
+    )
+    expensive = float(
+        user_input.get(
+            CONF_EXPENSIVE_LIMIT,
+            DEFAULT_EXPENSIVE_LIMIT,
+        )
+    )
+
+    if very_cheap >= cheap:
+        return "invalid_price_thresholds"
+
+    if cheap >= normal:
+        return "invalid_price_thresholds"
+
+    if normal >= expensive:
+        return "invalid_price_thresholds"
+
+    return None
 
 
 # ======================================================
 # Shared schema builder
 # ======================================================
+
 
 def _build_schema(defaults=None):
     defaults = defaults or {}
@@ -121,6 +196,79 @@ def _build_schema(defaults=None):
                 CONF_PRICE_SOURCE,
                 default=defaults.get(CONF_PRICE_SOURCE),
             ): price_selector,
+
+            # ----- Price classification thresholds -----
+            vol.Optional(
+                CONF_VERY_CHEAP_LIMIT,
+                default=defaults.get(
+                    CONF_VERY_CHEAP_LIMIT,
+                    DEFAULT_VERY_CHEAP_LIMIT,
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 0.01,
+                        "mode": "box",
+                        "unit_of_measurement": "SEK/kWh",
+                    }
+                }
+            ),
+
+            vol.Optional(
+                CONF_CHEAP_LIMIT,
+                default=defaults.get(
+                    CONF_CHEAP_LIMIT,
+                    DEFAULT_CHEAP_LIMIT,
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 0.01,
+                        "mode": "box",
+                        "unit_of_measurement": "SEK/kWh",
+                    }
+                }
+            ),
+
+            vol.Optional(
+                CONF_NORMAL_LIMIT,
+                default=defaults.get(
+                    CONF_NORMAL_LIMIT,
+                    DEFAULT_NORMAL_LIMIT,
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 0.01,
+                        "mode": "box",
+                        "unit_of_measurement": "SEK/kWh",
+                    }
+                }
+            ),
+
+            vol.Optional(
+                CONF_EXPENSIVE_LIMIT,
+                default=defaults.get(
+                    CONF_EXPENSIVE_LIMIT,
+                    DEFAULT_EXPENSIVE_LIMIT,
+                ),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 100,
+                        "step": 0.01,
+                        "mode": "box",
+                        "unit_of_measurement": "SEK/kWh",
+                    }
+                }
+            ),
 
             # ----- Optional total investment -----
             vol.Optional(
@@ -166,11 +314,13 @@ def _build_schema(defaults=None):
                     }
                 }
             ),
+
             # ----- Optional Advanced Mode -----
             vol.Optional(
                 "advanced_mode",
                 default=defaults.get("advanced_mode", False),
             ): cv.boolean,
+
             # ----- Optional CO2 calculation -----
             vol.Optional(
                 "co2_factor",
@@ -185,6 +335,7 @@ def _build_schema(defaults=None):
                     }
                 }
             ),
+
             vol.Optional("currency", default="SEK"): vol.In(
                 {
                     "SEK": "SEK (Swedish Krona)",
