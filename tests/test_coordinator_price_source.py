@@ -71,3 +71,15 @@ def test_coordinator_stores_normalized_price_model():
     data_price_position = source.index('self.data["price"] = price_model')
 
     assert price_model_position < data_price_position
+
+def test_first_update_does_not_return_before_price_processing():
+    source = _coordinator_source()
+
+    first_update_block = source[
+        source.index("if self._last_update is None:")
+        : source.index("price_state = self.hass.states.get")
+    ]
+
+    assert "return self.data" not in first_update_block
+    assert "dt_hours = 0" in first_update_block
+    assert "self._last_update = now" in first_update_block

@@ -8,9 +8,20 @@ from homeassistant.helpers.storage import Store
 
 from .sensor_helpers import _float_state
 from .flow_calculation import calculate_flows
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    DEFAULT_VERY_CHEAP_LIMIT,
+    DEFAULT_CHEAP_LIMIT,
+    DEFAULT_NORMAL_LIMIT,
+    DEFAULT_EXPENSIVE_LIMIT,
+    CONF_VERY_CHEAP_LIMIT,
+    CONF_CHEAP_LIMIT,
+    CONF_NORMAL_LIMIT,
+    CONF_EXPENSIVE_LIMIT,
+)
 from .economy_calculations import calculate_savings, battery_solar_share
 from .price_source import normalize_price_source
+from .price_source import classify_price
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +51,24 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.currency = entry.options.get(
             "currency",
             conf.get("currency", "SEK"),
-)
+        )
+        # Price classification thresholds (SEK/kWh)
+        self.very_cheap_limit = conf.get(
+            CONF_VERY_CHEAP_LIMIT,
+            DEFAULT_VERY_CHEAP_LIMIT,
+        )
+        self.cheap_limit = conf.get(
+            CONF_CHEAP_LIMIT,
+            DEFAULT_CHEAP_LIMIT,
+        )
+        self.normal_limit = conf.get(
+            CONF_NORMAL_LIMIT,
+            DEFAULT_NORMAL_LIMIT,
+        )
+        self.expensive_limit = conf.get(
+            CONF_EXPENSIVE_LIMIT,
+            DEFAULT_EXPENSIVE_LIMIT,
+        )
         self._last_update = None
         self._unsub_listeners = []
         self.install_date = None
@@ -194,12 +222,14 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             )
 
             if self._last_update is None:
-                self._last_update = now
-                return self.data
-            dt_hours = max(
-                (now - self._last_update).total_seconds() / 3600,
-                0,
-            )
+                # First update: establish the time baseline without
+                # accumulating energy or money for the time before startup.
+                dt_hours = 0
+            else:
+                dt_hours = max(
+                    (now - self._last_update).total_seconds() / 3600,
+                    0,
+                )
 
             self._last_update = now
 
@@ -214,6 +244,15 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 )
 
             current_price = price_model["current"]
+
+            if current_price is not None:
+                current_price["classification"] = classify_price(
+                    current_price["import"],
+                    very_cheap_limit=self.very_cheap_limit,
+                    cheap_limit=self.cheap_limit,
+                    normal_limit=self.normal_limit,
+                    expensive_limit=self.expensive_limit,
+                )
 
             if current_price is None:
                 import_price_raw = None
