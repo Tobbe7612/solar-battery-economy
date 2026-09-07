@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+
 # ---------------------------------------------------------------------------
 # Price classification
 # ---------------------------------------------------------------------------
@@ -58,6 +59,7 @@ def classify_price(
 
     return VERY_EXPENSIVE
 
+
 def calculate_price_quality(
     price: float,
     *,
@@ -69,15 +71,16 @@ def calculate_price_quality(
     """Calculate a 0-100 price quality score from configured price limits.
 
     Higher is better/cheaper.
+
     The configured price-classification thresholds define the four
     reference points:
+
         very cheap = 100
         cheap      = 75
         normal     = 50
         expensive  = 25
         above expensive = 0
     """
-
     if very_cheap_limit >= cheap_limit:
         raise ValueError("very_cheap_limit must be below cheap_limit")
 
@@ -132,17 +135,24 @@ def calculate_price_quality(
 
     return round(max(0.0, min(100.0, score)), 1)
 
+
 def normalize_price_source(
     attributes: dict[str, Any],
     now: datetime | None = None,
+    *,
+    very_cheap_limit: float = DEFAULT_VERY_CHEAP_LIMIT,
+    cheap_limit: float = DEFAULT_CHEAP_LIMIT,
+    normal_limit: float = DEFAULT_NORMAL_LIMIT,
+    expensive_limit: float = DEFAULT_EXPENSIVE_LIMIT,
 ) -> dict[str, Any]:
     """Normalize price data from a Home Assistant sensor.
 
     The input is expected to contain an ``all_prices`` attribute
     consisting of 15-minute price intervals.
 
-    No price calculations are performed here. The values supplied
-    by the source are preserved.
+    Source values are preserved. Each valid interval is enriched with
+    classification and price quality based on the configured import-price
+    thresholds.
     """
     all_prices = attributes.get("all_prices")
 
@@ -151,6 +161,16 @@ def normalize_price_source(
             "current": None,
             "forecast": [],
         }
+
+    # Validate the configured thresholds once before processing the forecast.
+    if very_cheap_limit >= cheap_limit:
+        raise ValueError("very_cheap_limit must be below cheap_limit")
+
+    if cheap_limit >= normal_limit:
+        raise ValueError("cheap_limit must be below normal_limit")
+
+    if normal_limit >= expensive_limit:
+        raise ValueError("normal_limit must be below expensive_limit")
 
     forecast: list[dict[str, Any]] = []
 
@@ -168,15 +188,43 @@ def normalize_price_source(
         except (KeyError, TypeError, ValueError):
             continue
 
-        forecast.append(
-            {
-                "start": start,
-                "end": end,
-                "spot": spot,
-                "import": import_price,
-                "export": export_price,
-            }
-        )
+        # The normalized model preserves the original source values.
+        interval = {
+            "start": start,
+            "end": end,
+            "spot": spot,
+            "import": import_price,
+            "export": export_price,
+        }
+
+        # Price intelligence is based on the import price because this is
+        # the price relevant when deciding when electricity is expensive
+        # or cheap for the household.
+        try:
+            import_price_float = float(import_price)
+        except (TypeError, ValueError):
+            import_price_float = None
+
+        if import_price_float is not None:
+            interval["classification"] = classify_price(
+                import_price_float,
+                very_cheap_limit=very_cheap_limit,
+                cheap_limit=cheap_limit,
+                normal_limit=normal_limit,
+                expensive_limit=expensive_limit,
+            )
+            interval["price_quality"] = calculate_price_quality(
+                import_price_float,
+                very_cheap_limit=very_cheap_limit,
+                cheap_limit=cheap_limit,
+                normal_limit=normal_limit,
+                expensive_limit=expensive_limit,
+            )
+        else:
+            interval["classification"] = None
+            interval["price_quality"] = None
+
+        forecast.append(interval)
 
     current = None
 
