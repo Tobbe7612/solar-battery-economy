@@ -58,6 +58,80 @@ def classify_price(
 
     return VERY_EXPENSIVE
 
+def calculate_price_quality(
+    price: float,
+    *,
+    very_cheap_limit: float = DEFAULT_VERY_CHEAP_LIMIT,
+    cheap_limit: float = DEFAULT_CHEAP_LIMIT,
+    normal_limit: float = DEFAULT_NORMAL_LIMIT,
+    expensive_limit: float = DEFAULT_EXPENSIVE_LIMIT,
+) -> float:
+    """Calculate a 0-100 price quality score from configured price limits.
+
+    Higher is better/cheaper.
+    The configured price-classification thresholds define the four
+    reference points:
+        very cheap = 100
+        cheap      = 75
+        normal     = 50
+        expensive  = 25
+        above expensive = 0
+    """
+
+    if very_cheap_limit >= cheap_limit:
+        raise ValueError("very_cheap_limit must be below cheap_limit")
+
+    if cheap_limit >= normal_limit:
+        raise ValueError("cheap_limit must be below normal_limit")
+
+    if normal_limit >= expensive_limit:
+        raise ValueError("normal_limit must be below expensive_limit")
+
+    def interpolate(
+        value: float,
+        low_price: float,
+        high_price: float,
+        low_score: float,
+        high_score: float,
+    ) -> float:
+        if high_price == low_price:
+            return high_score
+
+        ratio = (value - low_price) / (high_price - low_price)
+        return low_score + ratio * (high_score - low_score)
+
+    if price <= very_cheap_limit:
+        return 100.0
+
+    if price <= cheap_limit:
+        score = interpolate(
+            price,
+            very_cheap_limit,
+            cheap_limit,
+            100.0,
+            75.0,
+        )
+    elif price <= normal_limit:
+        score = interpolate(
+            price,
+            cheap_limit,
+            normal_limit,
+            75.0,
+            50.0,
+        )
+    elif price <= expensive_limit:
+        score = interpolate(
+            price,
+            normal_limit,
+            expensive_limit,
+            50.0,
+            25.0,
+        )
+    else:
+        return 0.0
+
+    return round(max(0.0, min(100.0, score)), 1)
+
 def normalize_price_source(
     attributes: dict[str, Any],
     now: datetime | None = None,

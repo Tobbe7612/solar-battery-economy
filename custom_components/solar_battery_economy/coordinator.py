@@ -21,7 +21,7 @@ from .const import (
 )
 from .economy_calculations import calculate_savings, battery_solar_share
 from .price_source import normalize_price_source
-from .price_source import classify_price
+from .price_source import classify_price, calculate_price_quality
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -247,6 +247,14 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
             if current_price is not None:
                 current_price["classification"] = classify_price(
+                    current_price["import"],
+                    very_cheap_limit=self.very_cheap_limit,
+                    cheap_limit=self.cheap_limit,
+                    normal_limit=self.normal_limit,
+                    expensive_limit=self.expensive_limit,
+                )
+
+                current_price["price_quality"] = calculate_price_quality(
                     current_price["import"],
                     very_cheap_limit=self.very_cheap_limit,
                     cheap_limit=self.cheap_limit,

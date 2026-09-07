@@ -91,6 +91,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ROISensor(coordinator, hass, entry))
     sensors.append(AnnualSavingsSensor(coordinator, hass, entry))
     sensors.append(EffectiveElectricityPriceSensor(coordinator, hass, entry))
+    sensors.append(ImportElectricityPriceSensor(coordinator, hass, entry))
+    sensors.append(ExportElectricityPriceSensor(coordinator, hass, entry))
+    sensors.append(PriceQualityIndexSensor(coordinator, hass, entry))
     sensors.append(SolarSavingsSensor(coordinator, hass, entry))
     sensors.append(BatterySavingsSensor(coordinator, hass, entry))
     sensors.append(SolarAnnualSavingsSensor(coordinator, hass, entry))
@@ -486,6 +489,105 @@ class EffectiveElectricityPriceSensor(EconomySensor):
             self._value = 0
         else:
             self._value = round(grid_house_cost / grid_house_energy, 3)
+
+        self.async_write_ha_state()
+
+# -----------------------------
+# Import Electricity Price – SEK/kWh
+# -----------------------------
+class ImportElectricityPriceSensor(EconomySensor):
+    @property
+    def native_unit_of_measurement(self):
+        return f"{self.coordinator.currency}/kWh"
+
+    _attr_icon = "mdi:cash"
+    _attr_state_class = "measurement"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "07 Import Electricity Price",
+            "import_electricity_price",
+            sensor_type="import_price",
+        )
+
+    def _handle_coordinator_update(self):
+        price = self.coordinator.data.get("price", {})
+        current = price.get("current")
+
+        if current is None:
+            self._value = None
+        else:
+            self._value = round(current.get("import", 0), 3)
+
+        self.async_write_ha_state()
+
+
+# -----------------------------
+# Export Electricity Price – SEK/kWh
+# -----------------------------
+class ExportElectricityPriceSensor(EconomySensor):
+    @property
+    def native_unit_of_measurement(self):
+        return f"{self.coordinator.currency}/kWh"
+
+    _attr_icon = "mdi:cash"
+    _attr_state_class = "measurement"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "08 Export Electricity Price",
+            "export_electricity_price",
+            sensor_type="export_price",
+        )
+
+    def _handle_coordinator_update(self):
+        price = self.coordinator.data.get("price", {})
+        current = price.get("current")
+
+        if current is None:
+            self._value = None
+        else:
+            self._value = round(current.get("export", 0), 3)
+
+        self.async_write_ha_state()
+
+# -----------------------------
+# Price Quality Index – 0-100
+# -----------------------------
+class PriceQualityIndexSensor(EconomySensor):
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:gauge"
+    _attr_state_class = "measurement"
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "09 Price Quality Index",
+            "price_quality_index",
+            sensor_type="price_quality",
+        )
+
+    def _handle_coordinator_update(self):
+        price = self.coordinator.data.get("price", {})
+        current = price.get("current")
+
+        if not current:
+            self._value = 0
+        else:
+            value = current.get("price_quality")
+
+            if value is None:
+                self._value = 0
+            else:
+                self._value = round(float(value), 1)
 
         self.async_write_ha_state()
 
