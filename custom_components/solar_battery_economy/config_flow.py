@@ -14,6 +14,8 @@ from .const import (
     CONF_GRID_POWER,
     CONF_BATTERY_POWER,
     CONF_PRICE_SOURCE,
+    CONF_PRICE_PERIOD_MINUTES,
+    CONF_PRICE_SELECTION_MODE,
     CONF_INVESTMENT,
     DEFAULT_VERY_CHEAP_LIMIT,
     DEFAULT_CHEAP_LIMIT,
@@ -42,6 +44,12 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             # Prevent duplicate configuration.
+            user_input = dict(user_input)
+
+            if CONF_PRICE_PERIOD_MINUTES in user_input:
+                user_input[CONF_PRICE_PERIOD_MINUTES] = int(
+                    user_input[CONF_PRICE_PERIOD_MINUTES]
+                )
             unique_id = DOMAIN
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
@@ -84,6 +92,13 @@ class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
+            user_input = dict(user_input)
+
+            if CONF_PRICE_PERIOD_MINUTES in user_input:
+                user_input[CONF_PRICE_PERIOD_MINUTES] = int(
+                    user_input[CONF_PRICE_PERIOD_MINUTES]
+                )
+
             threshold_error = _validate_price_thresholds(user_input)
 
             if threshold_error is not None:
@@ -196,6 +211,45 @@ def _build_schema(defaults=None):
                 CONF_PRICE_SOURCE,
                 default=defaults.get(CONF_PRICE_SOURCE),
             ): price_selector,
+
+            # ----- Future price period -----
+            vol.Optional(
+                CONF_PRICE_PERIOD_MINUTES,
+                default=str(defaults.get(CONF_PRICE_PERIOD_MINUTES, 15)),
+            ): selector(
+                {
+                    "select": {
+                        "options": [
+                            {"value": "15", "label": "15 minutes"},
+                            {"value": "30", "label": "30 minutes"},
+                            {"value": "60", "label": "1 hour"},
+                            {"value": "120", "label": "2 hours"},
+                            {"value": "240", "label": "4 hours"},
+                        ]
+                    }
+                }
+            ),
+
+            # ----- Future price selection mode -----
+            vol.Optional(
+                CONF_PRICE_SELECTION_MODE,
+                default=defaults.get(CONF_PRICE_SELECTION_MODE, "consecutive"),
+            ): selector(
+                {
+                    "select": {
+                        "options": [
+                            {
+                                "value": "consecutive",
+                                "label": "Consecutive period",
+                            },
+                            {
+                                "value": "cheapest_quarters",
+                                "label": "Cheapest quarters",
+                            },
+                        ]
+                    }
+                }
+            ),
 
             # ----- Price classification thresholds -----
             vol.Optional(

@@ -83,3 +83,41 @@ def test_first_update_does_not_return_before_price_processing():
     assert "return self.data" not in first_update_block
     assert "dt_hours = 0" in first_update_block
     assert "self._last_update = now" in first_update_block
+
+def test_coordinator_reads_price_period_minutes_config():
+    source = _coordinator_source()
+
+    assert (
+        "self.price_period_minutes = int("
+        in source
+    )
+    assert (
+        "conf.get(CONF_PRICE_PERIOD_MINUTES, 15)"
+        in source
+    )
+
+
+def test_coordinator_reads_price_selection_mode_config():
+    source = _coordinator_source()
+
+    assert "self.price_selection_mode = conf.get(" in source
+    assert "CONF_PRICE_SELECTION_MODE" in source
+    assert '"consecutive"' in source
+
+
+def test_coordinator_passes_price_period_to_cheapest_future_period():
+    source = _coordinator_source()
+
+    assert (
+        "duration_minutes=self.price_period_minutes"
+        in source
+    )
+
+
+def test_coordinator_passes_price_selection_mode_to_cheapest_future_period():
+    source = _coordinator_source()
+
+    assert (
+        "selection_mode=self.price_selection_mode"
+        in source
+    )

@@ -22,7 +22,7 @@ price_source = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(price_source)
 
 normalize_price_source = price_source.normalize_price_source
-
+find_cheapest_future_period = price_source.find_cheapest_future_period
 
 def test_normalize_valid_price_intervals():
     attributes = {
@@ -245,3 +245,210 @@ def test_future_intervals_are_retained():
 
     assert len(result["forecast"]) == 1
     assert result["forecast"][0]["spot"] == 0.40
+def test_find_cheapest_future_15_minute_period():
+    from datetime import datetime
+
+    forecast = [
+        {
+            "start": datetime(2026, 9, 11, 10, 0),
+            "end": datetime(2026, 9, 11, 10, 15),
+            "import": 1.20,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 15),
+            "end": datetime(2026, 9, 11, 10, 30),
+            "import": 0.80,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 30),
+            "end": datetime(2026, 9, 11, 10, 45),
+            "import": 1.00,
+        },
+    ]
+
+    result = find_cheapest_future_period(
+        forecast,
+        now=datetime(2026, 9, 11, 10, 0),
+        duration_minutes=15,
+        selection_mode="consecutive",
+    )
+
+    assert result is not None
+    assert result["duration_minutes"] == 15
+    assert result["selection_mode"] == "consecutive"
+    assert result["start"] == datetime(2026, 9, 11, 10, 15)
+    assert result["end"] == datetime(2026, 9, 11, 10, 30)
+    assert result["average_import_price"] == 0.80
+
+def test_find_cheapest_future_two_hours_consecutive():
+    forecast = [
+        {
+            "start": datetime(2026, 9, 11, 10, 0),
+            "end": datetime(2026, 9, 11, 10, 15),
+            "import": 1.50,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 15),
+            "end": datetime(2026, 9, 11, 10, 30),
+            "import": 1.40,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 30),
+            "end": datetime(2026, 9, 11, 10, 45),
+            "import": 1.30,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 45),
+            "end": datetime(2026, 9, 11, 11, 0),
+            "import": 1.20,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 0),
+            "end": datetime(2026, 9, 11, 11, 15),
+            "import": 0.50,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 15),
+            "end": datetime(2026, 9, 11, 11, 30),
+            "import": 0.40,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 30),
+            "end": datetime(2026, 9, 11, 11, 45),
+            "import": 0.30,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 45),
+            "end": datetime(2026, 9, 11, 12, 0),
+            "import": 0.20,
+        },
+        {
+            "start": datetime(2026, 9, 11, 12, 0),
+            "end": datetime(2026, 9, 11, 12, 15),
+            "import": 0.90,
+        },
+    ]
+
+    result = find_cheapest_future_period(
+        forecast,
+        now=datetime(2026, 9, 11, 10, 0),
+        duration_minutes=120,
+        selection_mode="consecutive",
+    )
+
+    assert result is not None
+    assert result["duration_minutes"] == 120
+    assert result["selection_mode"] == "consecutive"
+    assert result["start"] == datetime(2026, 9, 11, 10, 15)
+    assert result["end"] == datetime(2026, 9, 11, 12, 15)
+    assert result["average_import_price"] == 0.775
+    assert len(result["intervals"]) == 8
+
+def test_find_cheapest_future_two_hours_cheapest_quarters():
+    forecast = [
+        {
+            "start": datetime(2026, 9, 11, 10, 0),
+            "end": datetime(2026, 9, 11, 10, 15),
+            "import": 1.50,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 15),
+            "end": datetime(2026, 9, 11, 10, 30),
+            "import": 0.90,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 30),
+            "end": datetime(2026, 9, 11, 10, 45),
+            "import": 1.40,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 45),
+            "end": datetime(2026, 9, 11, 11, 0),
+            "import": 0.30,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 0),
+            "end": datetime(2026, 9, 11, 11, 15),
+            "import": 1.20,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 15),
+            "end": datetime(2026, 9, 11, 11, 30),
+            "import": 0.20,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 30),
+            "end": datetime(2026, 9, 11, 11, 45),
+            "import": 1.10,
+        },
+        {
+            "start": datetime(2026, 9, 11, 11, 45),
+            "end": datetime(2026, 9, 11, 12, 0),
+            "import": 0.40,
+        },
+        {
+            "start": datetime(2026, 9, 11, 12, 0),
+            "end": datetime(2026, 9, 11, 12, 15),
+            "import": 1.30,
+        },
+    ]
+
+    result = find_cheapest_future_period(
+        forecast,
+        now=datetime(2026, 9, 11, 10, 7),
+        duration_minutes=120,
+        selection_mode="cheapest_quarters",
+    )
+
+    assert result is not None
+    assert result["duration_minutes"] == 120
+    assert result["selection_mode"] == "cheapest_quarters"
+
+    assert len(result["intervals"]) == 8
+
+    assert [interval["import"] for interval in result["intervals"]] == [
+        0.90,
+        1.40,
+        0.30,
+        1.20,
+        0.20,
+        1.10,
+        0.40,
+        1.30,
+    ]
+
+    assert result["start"] == datetime(2026, 9, 11, 10, 15)
+    assert result["end"] == datetime(2026, 9, 11, 12, 15)
+
+    assert result["average_import_price"] == 0.85
+
+def test_find_cheapest_future_period_excludes_current_interval():
+    forecast = [
+        {
+            "start": datetime(2026, 9, 11, 10, 0),
+            "end": datetime(2026, 9, 11, 10, 15),
+            "import": 0.10,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 15),
+            "end": datetime(2026, 9, 11, 10, 30),
+            "import": 0.80,
+        },
+        {
+            "start": datetime(2026, 9, 11, 10, 30),
+            "end": datetime(2026, 9, 11, 10, 45),
+            "import": 0.90,
+        },
+    ]
+
+    result = find_cheapest_future_period(
+        forecast,
+        now=datetime(2026, 9, 11, 10, 7),
+        duration_minutes=15,
+        selection_mode="consecutive",
+    )
+
+    assert result is not None
+    assert result["start"] == datetime(2026, 9, 11, 10, 15)
+    assert result["end"] == datetime(2026, 9, 11, 10, 30)
+    assert result["average_import_price"] == 0.80

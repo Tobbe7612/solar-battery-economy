@@ -94,6 +94,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors.append(ImportElectricityPriceSensor(coordinator, hass, entry))
     sensors.append(ExportElectricityPriceSensor(coordinator, hass, entry))
     sensors.append(PriceQualityIndexSensor(coordinator, hass, entry))
+    sensors.append(CheapestFuturePeriodSensor(coordinator, hass, entry))
     sensors.append(SolarSavingsSensor(coordinator, hass, entry))
     sensors.append(BatterySavingsSensor(coordinator, hass, entry))
     sensors.append(SolarAnnualSavingsSensor(coordinator, hass, entry))
@@ -576,18 +577,70 @@ class PriceQualityIndexSensor(EconomySensor):
         )
 
     def _handle_coordinator_update(self):
-        price = self.coordinator.data.get("price", {})
-        current = price.get("current")
+        intelligence = self.coordinator.data.get("price_intelligence", {})
+        value = intelligence.get("price_quality_index")
 
-        if not current:
+        if value is None:
             self._value = 0
         else:
-            value = current.get("price_quality")
+            self._value = round(float(value), 1)
 
-            if value is None:
-                self._value = 0
-            else:
-                self._value = round(float(value), 1)
+        self.async_write_ha_state()
+
+# -----------------------------
+# Cheapest Future Period
+# -----------------------------
+class CheapestFuturePeriodSensor(EconomySensor):
+    """Show the cheapest configured future price period."""
+
+    _attr_icon = "mdi:clock-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, hass, entry):
+        super().__init__(
+            coordinator,
+            hass,
+            entry,
+            "13 Cheapest Future Period",
+            "cheapest_future_period",
+            sensor_type="price_intelligence",
+        )
+
+    def _handle_coordinator_update(self):
+        intelligence = self.coordinator.data.get("price_intelligence", {})
+        period = intelligence.get("cheapest_future_period")
+
+        if not period:
+            self._value = None
+            self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
+            return
+
+        start = period.get("start")
+        end = period.get("end")
+
+        if start is None or end is None:
+            self._value = None
+            self._attr_extra_state_attributes = {}
+            self.async_write_ha_state()
+            return
+
+        start_local = dt_util.as_local(start)
+        end_local = dt_util.as_local(end)
+
+        self._value = (
+            f"{start_local.strftime('%H:%M')}"
+            f"–{end_local.strftime('%H:%M')}"
+        )
+
+        self._attr_extra_state_attributes = {
+            "duration_minutes": period.get("duration_minutes"),
+            "selection_mode": period.get("selection_mode"),
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "average_import_price": period.get("average_import_price"),
+            "intervals": period.get("intervals", []),
+        }
 
         self.async_write_ha_state()
 

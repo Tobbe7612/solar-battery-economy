@@ -18,9 +18,11 @@ from .const import (
     CONF_CHEAP_LIMIT,
     CONF_NORMAL_LIMIT,
     CONF_EXPENSIVE_LIMIT,
+    CONF_PRICE_PERIOD_MINUTES,
+    CONF_PRICE_SELECTION_MODE,
 )
 from .economy_calculations import calculate_savings, battery_solar_share
-from .price_source import normalize_price_source
+from .price_source import find_cheapest_future_period
 from .price_source import normalize_price_source
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +46,16 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.grid_entity = conf["grid_power"]
         self.battery_entity = conf["battery_power"]
         self.price_source_entity = conf["price_source"]
+
+        self.price_period_minutes = int(
+            conf.get(CONF_PRICE_PERIOD_MINUTES, 15)
+        )
+
+        self.price_selection_mode = conf.get(
+            CONF_PRICE_SELECTION_MODE,
+            "consecutive",
+        )
+
         self.investment = conf.get("investment", 0)
         self.solar_investment = conf.get("solar_investment", 0)
         self.battery_investment = conf.get("battery_investment", 0)
@@ -257,6 +269,23 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 export_price_raw = current_price["export"]
 
             self.data["price"] = price_model
+
+            current_price_class = None
+            price_quality_index = None
+            if current_price is not None:
+                current_price_class = current_price.get("price_class")
+                price_quality_index = current_price.get("price_quality")
+
+            self.data["price_intelligence"] = {
+                "current_price_class": current_price_class,
+                "price_quality_index": price_quality_index,
+                "cheapest_future_period": find_cheapest_future_period(
+                    price_model.get("forecast", []),
+                    now=now,
+                    duration_minutes=self.price_period_minutes,
+                    selection_mode=self.price_selection_mode,
+                ),
+            }
 
             energy = self.data["energy"]
             money = self.data["money"]

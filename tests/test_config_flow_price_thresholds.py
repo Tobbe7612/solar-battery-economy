@@ -53,6 +53,29 @@ def test_config_flow_uses_correct_default_thresholds():
     assert "DEFAULT_NORMAL_LIMIT" in CONFIG_FLOW_SOURCE
     assert "DEFAULT_EXPENSIVE_LIMIT" in CONFIG_FLOW_SOURCE
 
+def test_config_flow_contains_price_period_minutes():
+    """Config flow exposes the price period duration setting."""
+    assert "CONF_PRICE_PERIOD_MINUTES" in CONFIG_FLOW_SOURCE
+
+
+def test_config_flow_contains_price_selection_mode():
+    """Config flow exposes the price selection mode setting."""
+    assert "CONF_PRICE_SELECTION_MODE" in CONFIG_FLOW_SOURCE
+
+
+def test_config_flow_uses_correct_price_period_options():
+    """Config flow exposes the agreed price period options."""
+    assert '{"value": "15", "label": "15 minutes"}' in CONFIG_FLOW_SOURCE
+    assert '{"value": "30", "label": "30 minutes"}' in CONFIG_FLOW_SOURCE
+    assert '{"value": "60", "label": "1 hour"}' in CONFIG_FLOW_SOURCE
+    assert '{"value": "120", "label": "2 hours"}' in CONFIG_FLOW_SOURCE
+    assert '{"value": "240", "label": "4 hours"}' in CONFIG_FLOW_SOURCE
+
+
+def test_config_flow_uses_correct_price_selection_options():
+    """Config flow exposes the agreed price selection modes."""
+    assert '"value": "consecutive"' in CONFIG_FLOW_SOURCE
+    assert '"value": "cheapest_quarters"' in CONFIG_FLOW_SOURCE
 
 def _extract_float(const_name: str) -> float:
     """Extract a numeric constant value directly from const.py."""

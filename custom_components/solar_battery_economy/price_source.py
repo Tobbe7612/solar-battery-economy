@@ -136,6 +136,136 @@ def calculate_price_quality(
     return round(max(0.0, min(100.0, score)), 1)
 
 
+def find_cheapest_future_period(
+    forecast: list[dict[str, Any]],
+    *,
+    now: datetime,
+    duration_minutes: int = 15,
+    selection_mode: str = "consecutive",
+) -> dict[str, Any] | None:
+    """Find the cheapest future period in a normalized price forecast.
+
+    Args:
+        forecast:
+            Normalized 15-minute forecast intervals.
+        duration_minutes:
+            Requested duration in minutes. Must be a multiple of 15.
+        selection_mode:
+            "consecutive" selects one continuous block.
+            "cheapest_quarters" selects the cheapest individual quarters.
+        horizon_hours:
+            Maximum number of future hours to search.
+
+    Returns:
+        A structured result describing the cheapest period, or None when
+        no suitable future intervals are available.
+    """
+    if duration_minutes <= 0 or duration_minutes % 15 != 0:
+        raise ValueError("duration_minutes must be a positive multiple of 15")
+
+    if selection_mode not in ("consecutive", "cheapest_quarters"):
+        raise ValueError(
+            "selection_mode must be 'consecutive' or 'cheapest_quarters'"
+        )
+
+    required_intervals = duration_minutes // 15
+
+    valid_forecast = [
+        interval
+        for interval in forecast
+        if interval.get("import") is not None
+        and interval.get("start") is not None
+        and interval.get("end") is not None
+    ]
+
+    if not valid_forecast:
+        return None
+
+    # The forecast is expected to be ordered chronologically.
+    valid_forecast = sorted(
+        valid_forecast,
+        key=lambda interval: interval["start"],
+    )
+
+    # Only future intervals are eligible.
+    # The currently active interval is deliberately excluded.
+    candidates = [
+        interval
+        for interval in valid_forecast
+        if interval["start"] >= now
+    ]
+
+    if len(candidates) < required_intervals:
+        return None
+
+    if selection_mode == "cheapest_quarters":
+        selected = sorted(
+            candidates,
+            key=lambda interval: float(interval["import"]),
+        )[:required_intervals]
+
+        selected = sorted(
+            selected,
+            key=lambda interval: interval["start"],
+        )
+
+    else:
+        windows = []
+
+        for index in range(
+            len(candidates) - required_intervals + 1
+        ):
+            window = candidates[
+                index : index + required_intervals
+            ]
+
+            # A consecutive period must contain uninterrupted 15-minute
+            # intervals.
+            is_continuous = all(
+                window[i]["end"] == window[i + 1]["start"]
+                for i in range(len(window) - 1)
+            )
+
+            if not is_continuous:
+                continue
+
+            average_import = sum(
+                float(interval["import"])
+                for interval in window
+            ) / required_intervals
+
+            windows.append(
+                (
+                    average_import,
+                    window,
+                )
+            )
+
+        if not windows:
+            return None
+
+        _, selected = min(
+            windows,
+            key=lambda item: (
+                item[0],
+                item[1][0]["start"],
+            ),
+        )
+
+    average_import = sum(
+        float(interval["import"])
+        for interval in selected
+    ) / len(selected)
+
+    return {
+        "duration_minutes": duration_minutes,
+        "selection_mode": selection_mode,
+        "start": selected[0]["start"],
+        "end": selected[-1]["end"],
+        "average_import_price": round(average_import, 4),
+        "intervals": selected,
+    }
+
 def normalize_price_source(
     attributes: dict[str, Any],
     now: datetime | None = None,
@@ -206,7 +336,7 @@ def normalize_price_source(
             import_price_float = None
 
         if import_price_float is not None:
-            interval["classification"] = classify_price(
+            interval["price_class"] = classify_price(
                 import_price_float,
                 very_cheap_limit=very_cheap_limit,
                 cheap_limit=cheap_limit,
@@ -221,7 +351,7 @@ def normalize_price_source(
                 expensive_limit=expensive_limit,
             )
         else:
-            interval["classification"] = None
+            interval["price_class"] = None
             interval["price_quality"] = None
 
         forecast.append(interval)
