@@ -161,3 +161,14 @@ def test_price_aligned_statistics_skip_bucket_crossing_price_change():
     assert analytics.build_statistics_energy_samples_with_price_history(
         energy_stats, price_history
     ) == []
+
+
+def test_stat_start_value_normalizes_numeric_timestamp_as_utc():
+    timestamp = datetime(2026, 9, 19, 10, 0, tzinfo=timezone.utc).timestamp()
+
+    result = analytics.stat_start_value(
+        {"start": timestamp},
+        "start",
+    )
+
+    assert result == datetime(2026, 9, 19, 10, 0, tzinfo=timezone.utc)

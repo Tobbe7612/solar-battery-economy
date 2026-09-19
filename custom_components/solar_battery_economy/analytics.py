@@ -7,7 +7,7 @@ samples from Recorder; these functions perform the canonical calculations.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from statistics import median
 from typing import Any
 
