@@ -1,10 +1,11 @@
 # Architecture Notes
 
-## Current repository
+## 1. Current Repository
 
-The supplied repository is version `1.4.0`.
+The current Solar Battery Economy repository baseline is version
+`1.4.0`.
 
-```text
+``` text
 custom_components/solar_battery_economy/
 ├── __init__.py
 ├── config_flow.py
@@ -20,157 +21,430 @@ custom_components/solar_battery_economy/
 └── brand/
 ```
 
-## Runtime architecture
+------------------------------------------------------------------------
 
-```text
+## 2. Target Ecosystem Architecture
+
+``` text
+                    SOLAR BATTERY ECONOMY
+                            │
+                 canonical data + intelligence
+                            │
+          ┌─────────────────┼─────────────────┐
+          │                 │                 │
+          ▼                 ▼                 ▼
+   ENERGY DASHBOARD      FLOW CARD       PHASE LOAD CARD
+   "What happened?"     "What is         "How are the
+   "What did it cost?"   happening now?"  phases loaded?"
+   "How is it going?"
+```
+
+SBE is the central data and intelligence layer.
+
+The three Lovelace cards are complementary presentation layers.
+
+They are not intended to become one all-in-one card.
+
+------------------------------------------------------------------------
+
+## 3. Runtime Architecture
+
+``` text
 Configured HA sensors
     │
     ├── solar power
     ├── grid power
     ├── battery power
-    ├── import price
-    └── export price
+    └── configured price source
             │
             ▼
 SolarBatteryEconomyCoordinator
             │
-            ├── _float_state()
-            │
-            ▼
-calculate_flows()
-            │
-            ├── power flows
-            │
+            ├── normalized input values
+            ├── canonical power flows
             ├── energy accumulation
-            │
-            └── money accumulation
+            ├── money accumulation
+            ├── savings
+            ├── normalized price model
+            ├── price intelligence
+            └── consumer data/analysis
                     │
                     ▼
-             calculate_savings()
+              coordinator.data
                     │
                     ▼
-             coordinator.data
+                 sensor.py
                     │
-                    ▼
-                sensor.py
+                    ├── HA entities
+                    │
+                    └── structured data
 ```
 
-## Coordinator
+------------------------------------------------------------------------
 
-`coordinator.py` is the central runtime/data layer.
+## 4. Ownership Boundaries
 
-It owns:
+### Solar Battery Economy owns
 
-- configured entity IDs
-- total investment
-- solar investment
-- battery investment
-- CO₂ factor
-- currency
-- persistent Store
-- install date
-- current `power`
-- accumulated `energy`
-- accumulated `money`
-- calculated `savings`
+-   input normalization;
+-   flow calculations;
+-   energy accumulation;
+-   financial calculations;
+-   persistence;
+-   price normalization;
+-   price intelligence;
+-   canonical analytical definitions;
+-   consumer configuration and metadata;
+-   Home Assistant entity semantics.
 
-It listens to state changes from the five configured inputs.
+### Home Assistant Recorder owns
 
-## Flow layer
+-   historical storage;
+-   statistics/history used by presentation clients.
 
-`flow_calculation.py` contains no Home Assistant entity code. It transforms three power inputs into eight directional flow values.
+SBE must not create a second persistent history database for normal
+dashboard use.
 
-This separation is intentional and should be preserved.
+### Energy Dashboard owns
 
-## Financial layer
+-   presentation of energy;
+-   presentation of economy;
+-   price visualization;
+-   historical timeline;
+-   consumer analysis presentation;
+-   deterministic insight presentation;
+-   responsive UI.
 
-`economy_calculations.py` currently contains:
+The dashboard must not redefine SBE calculations.
 
-- `calculate_savings()`
-- `battery_solar_share()`
+### Flow Card owns
 
-The coordinator handles time integration and money accumulation. The economy module handles savings derivation and battery-origin share.
+-   live power-flow visualization;
+-   flow animation;
+-   current flow presentation;
+-   live interaction.
 
-## Sensor layer
+The Flow Card is not the place for historical economy or intelligence
+business logic.
 
-`sensor.py` contains both:
+### Phase Load Card owns
 
-1. entity creation
-2. sensor implementations
+-   phase loading visualization;
+-   phase current/power presentation;
+-   electrical installation view.
 
-This is currently a large file (~1000 lines).
+------------------------------------------------------------------------
 
-A future refactor may split sensor classes into modules, but such a refactor should not change unique IDs or entity semantics.
+## 5. Data Flow
 
-## Base entity
-
-`sensor_base.py` defines `EconomySensor`.
-
-It is responsible for common HA entity behavior and two device groups.
-
-## Persistence
-
-Coordinator storage:
-
-```text
-energy
-money
-install_date
-battery_split_migrated
+``` text
+Nord Pool template
+        │
+        ▼
+   SBE Price Adapter
+        │
+        ▼
+ Normalized Price Model
+        │
+        ├── spot
+        ├── import
+        ├── export
+        ├── price_class
+        ├── price_quality
+        └── forecast intervals
 ```
 
-RestoreEntity is used by selected sensors for state restoration.
+The user's existing Nord Pool template remains an upstream source.
 
-## Battery origin attribution
+It must not be modified as part of this architecture work.
 
-Battery discharge value is split by cumulative charge-energy origin:
+------------------------------------------------------------------------
 
-```text
-solar_share =
-    solar_battery_energy /
-    (solar_battery_energy + grid_battery_energy)
+## 6. Price Semantics
+
+The three price concepts must remain separate.
+
+``` text
+SPOT
+└── raw market price
+    └── market-price visualization
+
+IMPORT
+└── actual household purchase price
+    └── ALL dashboard cost calculations
+
+EXPORT
+└── export value/revenue
+    └── export-income calculations
 ```
 
-That share is applied to battery-house and battery-grid money values.
+### Absolute rule
 
-This is an allocation model, not an exact physical battery provenance model.
+**Every Energy Dashboard cost is based on total import price, never spot
+price.**
 
-## Entity data semantics
+This applies to house cost, consumer cost, period cost, cost comparisons
+and cost-based insights.
 
-### Power
+------------------------------------------------------------------------
 
-`W`, `measurement`.
+## 7. Time Horizon
 
-### Energy
+The dashboard has a strict time contract.
 
-`kWh`, `energy`, `total_increasing`.
+### Historical
 
-### Money
+``` text
+maximum 24 hours backwards
+```
 
-Configured currency, `monetary`, `total`.
+### Future price
 
-### Annualized metrics
+``` text
+current moment
+→ remaining available data today
+→ tomorrow's available data
+```
 
-Configured currency, `measurement`.
+Maximum future horizon is the end of tomorrow's available Nord Pool
+data.
 
-### Payback
+No data is extrapolated beyond the upstream source.
 
-Years or date.
+No 3-day or 7-day price forecast is introduced.
 
-## Configuration
+------------------------------------------------------------------------
 
-The config flow uses entity selectors for the five required input sensors and number selectors for investments/CO₂ factor.
+## 8. House Total
 
-There is no explicit no-battery configuration in the current code.
+Canonical house consumption:
 
-## Important architecture boundary
+``` text
+house_total =
+    solar_house
+  + battery_house
+  + grid_house
+```
 
-Solar Battery Economy owns:
+Required semantics:
 
-- flow calculations
-- accumulation
-- financial calculations
-- persistence
-- HA entity semantics
+``` text
+kWh
+device_class = energy
+state_class = total_increasing
+```
 
-The flow card should consume the resulting entities rather than recreate the financial model.
+Existing directional energy entities remain untouched.
+
+------------------------------------------------------------------------
+
+## 9. Persistence
+
+The coordinator owns persistent accumulated values.
+
+Existing persistence must remain compatible.
+
+New cumulative values must:
+
+-   survive restart;
+-   not reset to zero;
+-   not create artificial energy spikes;
+-   preserve historical continuity.
+
+Every persistence-sensitive change requires unit tests and runtime
+verification.
+
+------------------------------------------------------------------------
+
+## 10. Generic Consumers
+
+A consumer is a configurable measurable load.
+
+``` text
+Consumer
+├── name               required
+├── energy_entity      required
+├── power_entity       optional
+├── icon               optional
+└── color              optional
+```
+
+Consumers are not hardcoded device types.
+
+Examples:
+
+-   car;
+-   spa;
+-   heat pump;
+-   appliance;
+-   washing machine;
+-   server.
+
+The original energy entity remains authoritative for historical energy.
+
+The optional power entity is for live display.
+
+The card may limit how many consumers it displays without changing the
+SBE data model.
+
+------------------------------------------------------------------------
+
+## 11. Price Intelligence
+
+SBE provides canonical price intelligence.
+
+Current concepts:
+
+``` text
+current_price_class
+price_quality_index
+cheapest_future_period
+```
+
+Conceptual price classes:
+
+``` text
+VERY_CHEAP
+CHEAP
+NORMAL
+EXPENSIVE
+VERY_EXPENSIVE
+```
+
+PQI:
+
+``` text
+0–100
+higher = better/cheaper
+```
+
+PQI is not Smart Score.
+
+------------------------------------------------------------------------
+
+## 12. Smart Score
+
+Smart Score is a dashboard-level intelligence concept intended to
+summarize broader energy/economic behavior.
+
+It must not be implemented as a duplicate of PQI.
+
+Before implementation, the Smart Score must have:
+
+-   an explicit definition;
+-   deterministic inputs;
+-   mathematical calculation;
+-   tests;
+-   documented interpretation.
+
+The dashboard may not invent its own Smart Score formula.
+
+------------------------------------------------------------------------
+
+## 13. Dashboard Information Architecture
+
+The mockup is the visual and functional target.
+
+The dashboard should broadly contain:
+
+``` text
+LIVE PRICE
+├── current price
+├── price class
+├── PQI
+├── status
+└── near-term information
+
+PRICE STATISTICS
+├── lowest
+├── highest
+└── average
+
+TIMELINE
+├── max 24h history
+├── actual consumption
+├── actual consumer usage
+├── current moment
+└── future price through today + tomorrow
+
+ENERGY & ECONOMY
+├── consumption
+├── import cost
+├── consumer energy
+├── consumer cost
+├── battery contribution
+└── other canonical metrics
+
+INSIGHTS
+├── cheap-use analysis
+├── expensive-use analysis
+├── costliest periods
+└── consumer price alignment
+```
+
+The exact visual arrangement is a UI decision made after the data
+contract is complete.
+
+------------------------------------------------------------------------
+
+## 14. Architecture Rules
+
+1.  No business logic duplication in cards.
+2.  No second history database.
+3.  No sensor explosion for 15-minute forecast data.
+4.  Existing public entities remain stable.
+5.  New capabilities should be additive.
+6.  Cost calculations always use total import price.
+7.  Spot remains available for market-price visualization.
+8.  Forecast horizon never exceeds today + tomorrow.
+9.  Dashboard history never exceeds 24 hours.
+10. Nord Pool template remains unchanged.
+11. Flow Card remains focused on live flows.
+12. Phase Load Card remains focused on phase loading.
+13. New code must be covered by appropriate tests.
+14. Documentation must be updated together with contract-changing code.
+
+------------------------------------------------------------------------
+
+## 15. Development Boundary
+
+Before modifying SBE, every proposed feature must be classified:
+
+``` text
+CANONICAL SBE DATA
+        │
+        ├── existing → reuse
+        │
+        ├── missing → add minimal canonical capability
+        │
+        └── unclear → define/test first
+
+RECORDER
+        │
+        └── historical retrieval
+
+CARD
+        │
+        └── presentation only
+```
+
+No feature should be added to SBE merely because it makes card
+implementation easier.
+
+------------------------------------------------------------------------
+
+## 16. Current Status
+
+``` text
+Architecture baseline       COMPLETE
+Energy Data Contract        UPDATED / FROZEN
+Dashboard target            APPROVED
+Time horizon                LOCKED
+Cost semantics              LOCKED
+Nord Pool template          LOCKED / UNCHANGED
+
+Next:
+FAS 3.1 Data Specification
+FAS 3.1 Data Gap Matrix
+FAS 3.1 Definition Decisions
+```

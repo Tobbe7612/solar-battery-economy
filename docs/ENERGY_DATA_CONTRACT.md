@@ -1,99 +1,105 @@
 # ENERGY DATA CONTRACT
 
-**Project:** Solar Battery Economy ecosystem  
-**Document status:** FROZEN — FAS 2B  
-**Version:** 1.0  
-**Purpose:** Source of Truth for data exposed by Solar Battery Economy to the ecosystem's Lovelace cards.
+**Project:** Solar Battery Economy ecosystem\
+**Document status:** FROZEN --- FAS 2B, updated for FAS 3.1\
+**Version:** 1.1\
+**Purpose:** Source of Truth for data exposed by Solar Battery Economy
+to the ecosystem's Lovelace cards.
 
----
+------------------------------------------------------------------------
 
 ## 1. Purpose
 
-This document defines the data contract between the Solar Battery Economy (SBE)
-integration and its related Lovelace cards.
+This document defines the data contract between the Solar Battery
+Economy (SBE) integration and its related Lovelace cards.
 
 The contract defines:
 
-- what data SBE guarantees to expose;
-- the semantic meaning of each value;
-- which data is represented as Home Assistant entities;
-- which data is structured/forecast data;
-- how historical data is obtained;
-- consumer configuration;
-- price intelligence;
-- backward-compatibility requirements;
-- the boundaries of V1.
+-   what data SBE guarantees to expose;
+-   the semantic meaning of each value;
+-   which data is represented as Home Assistant entities;
+-   which data is structured/forecast data;
+-   how historical data is obtained;
+-   consumer configuration;
+-   price intelligence;
+-   Energy Dashboard requirements;
+-   backward-compatibility requirements;
+-   the boundaries of V1.
 
 This document is an architectural contract, not an implementation guide.
 
-No card may invent a competing definition for a value already defined here.
+No card may invent a competing definition for a value already defined
+here.
 
----
+------------------------------------------------------------------------
 
 ## 2. Ecosystem Architecture
 
-```text
-                         HOME ASSISTANT
-                              |
-             +----------------+----------------+
-             |                |                |
-          Nord Pool       Solar / Grid     Battery / Loads
-             |                |                |
-             +----------------+----------------+
-                              |
-                              v
-                 +--------------------------+
-                 |   SOLAR BATTERY ECONOMY  |
-                 |                          |
-                 |  Data ingestion          |
-                 |  Flow calculation        |
-                 |  Energy accumulation     |
-                 |  Economy calculation     |
-                 |  Price intelligence      |
-                 |  Consumer metadata       |
-                 |  Persistence             |
-                 +------------+-------------+
-                              |
-                       ENERGY DATA CONTRACT
-                              |
-              +---------------+----------------+
-              |               |                |
-              v               v                v
-          Flow Card    Energy Intelligence   Phase Load
-                            Card               Card
+``` text
+                          HOME ASSISTANT
+                               |
+              +----------------+----------------+
+              |                |                |
+           Nord Pool       Solar / Grid     Battery / Loads
+              |                |                |
+              +----------------+----------------+
+                               |
+                               v
+                  +--------------------------+
+                  |   SOLAR BATTERY ECONOMY  |
+                  |                          |
+                  |  Data ingestion          |
+                  |  Flow calculation        |
+                  |  Energy accumulation     |
+                  |  Economy calculation     |
+                  |  Price intelligence      |
+                  |  Consumer metadata       |
+                  |  Persistence             |
+                  +------------+-------------+
+                               |
+                        ENERGY DATA CONTRACT
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+          v                    v                    v
+      Flow Card        Energy Dashboard       Phase Load Card
 ```
 
 SBE is the central energy/economy data engine.
 
-The Energy Intelligence Card depends on SBE.
+The Energy Dashboard depends on SBE.
 
-The Energy Intelligence Card is initially a separate GitHub repository.
+The Energy Dashboard is a separate presentation layer/repository.
 
-Phase Load Card remains a separate presentation layer and is not forced into
-the SBE data model unless a later architectural decision explicitly requires it.
+Phase Load Card remains a separate presentation layer and is not forced
+into the SBE data model unless a later architectural decision explicitly
+requires it.
 
----
+------------------------------------------------------------------------
 
 ## 3. Core Principles
 
 ### 3.1 SBE is the data/intelligence layer
 
-Cards should primarily consume data rather than duplicate business logic.
+Cards should primarily consume data rather than duplicate business
+logic.
 
 ### 3.2 Cards are presentation/analysis clients
 
 Cards must not independently redefine:
 
-- energy flow semantics;
-- SBE cost semantics;
-- SBE savings semantics;
-- price classification rules.
+-   energy flow semantics;
+-   SBE cost semantics;
+-   SBE savings semantics;
+-   price classification rules;
+-   canonical analytical definitions.
 
 ### 3.3 Home Assistant Recorder is the historical layer
 
 SBE should expose correct HA entities and state metadata.
 
-SBE must not create a parallel historical database for normal card history.
+SBE must not create a parallel historical database for normal card
+history.
 
 ### 3.4 Structured data for high-cardinality forecast data
 
@@ -103,52 +109,60 @@ The 15-minute price forecast must not create one entity per interval.
 
 Existing SBE entities should remain stable whenever reasonably possible.
 
-Existing entity unique IDs, units, semantics and historical continuity must not
-be changed unnecessarily.
+Existing entity unique IDs, units, semantics and historical continuity
+must not be changed unnecessarily.
 
----
+### 3.6 Do not modify the upstream Nord Pool template
 
-## 4. Existing SBE Data — Preserve
+The user's existing Nord Pool-based price template is an upstream
+source.
 
-The following existing flow model remains the foundation:
+Its existing structure and formulas are outside the scope of SBE/Card
+implementation changes.
+
+------------------------------------------------------------------------
+
+## 4. Existing SBE Data --- Preserve
+
+The following existing flow model remains the foundation.
 
 ### Power flows
 
-- Solar → House
-- Solar → Battery
-- Solar → Grid
-- Battery → House
-- Battery → Grid
-- Grid → House
-- Grid → Battery
-- House → Grid
+-   Solar → House
+-   Solar → Battery
+-   Solar → Grid
+-   Battery → House
+-   Battery → Grid
+-   Grid → House
+-   Grid → Battery
+-   House → Grid
 
 ### Energy flows
 
-The corresponding accumulated energy values remain available as kWh,
-with appropriate Home Assistant energy semantics.
+The corresponding accumulated energy values remain available as kWh with
+appropriate Home Assistant energy semantics.
 
 ### Economy
 
-Existing SBE economy/savings entities remain part of the public contract and
-must not be silently repurposed.
+Existing SBE economy/savings entities remain part of the public contract
+and must not be silently repurposed.
 
 ### Battery analytics
 
-Existing battery-related calculations and sensors remain authoritative unless
-a future version explicitly changes their contract.
+Existing battery-related calculations and sensors remain authoritative
+unless a future version explicitly changes their contract.
 
----
+------------------------------------------------------------------------
 
 ## 5. House Energy Contract
 
 ### 5.1 House Total Energy
 
-A new canonical house-consumption energy value shall be exposed.
+A canonical house-consumption energy value is exposed.
 
 Definition:
 
-```text
+``` text
 House Total Energy =
     Solar → House
   + Battery → House
@@ -160,18 +174,16 @@ regardless of energy source.
 
 Required Home Assistant semantics:
 
-```text
+``` text
 unit_of_measurement: kWh
 device_class: energy
 state_class: total_increasing
 ```
 
-The value must survive Home Assistant restarts according to the same persistence
-principles used by the existing SBE accumulated-energy sensors.
+The value must survive Home Assistant restarts according to the same
+persistence principles used by existing SBE accumulated-energy sensors.
 
-This is a key data source for the Energy Intelligence Card.
-
----
+------------------------------------------------------------------------
 
 ## 6. Power Contract
 
@@ -180,29 +192,31 @@ visualization.
 
 The Flow Card may use these values directly.
 
-No second competing power-flow calculation should be introduced unless required
-by a later approved architecture change.
+No second competing power-flow calculation should be introduced unless
+required by a later approved architecture change.
 
----
+------------------------------------------------------------------------
 
 ## 7. Price Data Contract
 
-The upstream price source is currently the user's Nord Pool based template
-sensor.
+The upstream price source is the user's existing Nord Pool based
+template sensor.
 
-The current template provides:
+The current source provides:
 
-- current price;
-- spot price;
-- import price;
-- export price;
-- 15-minute intervals;
-- today's intervals;
-- tomorrow's intervals.
+-   current price;
+-   spot price;
+-   import price;
+-   export price;
+-   15-minute intervals;
+-   today's intervals;
+-   tomorrow's intervals;
+-   `tomorrow_available`;
+-   structured `all_prices`.
 
-Its interval structure is conceptually:
+Conceptual interval structure:
 
-```text
+``` text
 {
   start: datetime,
   end: datetime,
@@ -212,65 +226,94 @@ Its interval structure is conceptually:
 }
 ```
 
-The current template sensor is an upstream data source and is not itself the
-public API of the Energy Intelligence Card.
+SBE normalizes this information into the project's price model.
 
-SBE shall normalize this information into the project's price model.
+The exact entity name of the user's upstream template sensor remains a
+configuration detail and must not be hardcoded into a card.
 
-The exact entity name of the user's existing template sensor must remain a
-configuration detail rather than being hardcoded into the card.
-
----
+------------------------------------------------------------------------
 
 ## 8. Price Semantics
 
-### 8.1 Import price
+### 8.1 Spot price
 
-The primary consumer-facing price is the actual import price.
+Spot price is the raw market price.
 
-It represents the price paid when purchasing electricity.
+It is used for market-price visualization where the Energy Dashboard
+explicitly presents spot price.
 
-The user's current calculation includes the configured components such as:
+### 8.2 Import price
 
-- Nord Pool spot price;
-- supplier markup;
-- energy tax;
-- VAT;
-- variable grid transfer fee.
+Import price is the actual household purchase price.
 
-The exact fee components and values must be documented in the project's
-configuration/documentation rather than silently embedded in card code.
+It includes the applicable components represented by the user's existing
+price source, such as:
 
-### 8.2 Spot price
+-   Nord Pool spot price;
+-   supplier markup;
+-   energy tax;
+-   VAT;
+-   variable grid transfer fee.
 
-Spot price remains available as separate raw price data.
+**All household electricity cost calculations in the Energy Dashboard
+MUST use total import price, never spot price.**
+
+This applies to:
+
+-   house cost;
+-   consumer cost;
+-   cost per period;
+-   cost comparisons;
+-   cost-based insights;
+-   average purchase price;
+-   any future cost metric.
+
+Spot price must never be substituted for import price in a cost
+calculation.
 
 ### 8.3 Export price
 
-Export price remains available for future battery/export analysis.
+Export price represents the value/revenue associated with electricity
+exported to the grid.
 
-Export price is not the primary price shown in the V1 Energy Intelligence
-Card.
+Export revenue remains a separate economic concept and must not be mixed
+into household import cost.
 
----
+### 8.4 Savings
+
+Savings remain a separate economic concept and must not be silently
+treated as either import cost or export income.
+
+------------------------------------------------------------------------
 
 ## 9. Price Forecast Contract
 
 Forecast resolution is fixed at:
 
-```text
+``` text
 15 minutes
 ```
 
-Target horizon:
+### 9.1 Forecast horizon
 
-```text
-24 hours forward
+The Energy Dashboard future price horizon is explicitly limited to the
+data supplied by the central price sensor:
+
+``` text
+today + tomorrow
 ```
 
-The forecast consists of intervals:
+No price data may be invented, extrapolated or projected beyond the
+available Nord Pool intervals.
 
-```text
+If tomorrow's prices are not available, the dashboard must not present
+them as known future prices.
+
+The dashboard must respect `tomorrow_available`.
+
+### 9.2 Forecast interval
+
+``` text
 PriceInterval {
     start
     end
@@ -282,40 +325,42 @@ PriceInterval {
 }
 ```
 
-No 96 individual forecast entities shall be created.
+No one-entity-per-interval forecast implementation is allowed.
 
-Forecast data is structured data.
+Forecast data remains structured data.
 
-If tomorrow's prices are not available, those intervals must be represented as
-unknown/unavailable/neutral.
-
-The system must never substitute a guessed or stale price and present it as a
-known future price.
-
----
+------------------------------------------------------------------------
 
 ## 10. Current Price
 
-SBE shall retain the existing current import/export price entities where they
-already exist.
+SBE shall retain existing current import/export price entities where
+they already exist.
 
-New functionality must not require breaking or renaming existing entities.
+New functionality must not require breaking or renaming existing
+entities.
 
-The current import price is the default reference for:
+Price semantics are explicit:
 
-- price classification;
-- Price Quality Index;
-- Energy Intelligence Card primary price display.
+``` text
+spot
+  = market-price visualization
 
----
+import
+  = household purchase cost
+
+export
+  = export revenue
+```
+
+------------------------------------------------------------------------
 
 ## 11. Price Classification
 
-SBE shall provide normalized relative price classification.
+SBE provides normalized relative price classification.
 
-The conceptual classes are:
+Conceptual classes:
 
-```text
+``` text
 VERY_CHEAP
 CHEAP
 NORMAL
@@ -323,86 +368,83 @@ EXPENSIVE
 VERY_EXPENSIVE
 ```
 
-Classification is relative to the available price distribution, not a fixed
-SEK/kWh threshold.
+Classification is relative to the available price distribution, not a
+fixed SEK/kWh threshold.
 
-The exact algorithm and percentile boundaries are an implementation detail to
-be validated during FAS 3 and documented with tests.
+The algorithm must be deterministic, specified, tested and documented
+before being treated as a stable contract.
 
-The algorithm must be deterministic.
-
----
+------------------------------------------------------------------------
 
 ## 12. Price Quality Index
 
-SBE shall expose a normalized:
+SBE exposes:
 
-```text
+``` text
 Price Quality Index: 0–100
 ```
 
 Semantic direction:
 
-```text
+``` text
 100 = exceptionally favorable / cheap
 0   = exceptionally unfavorable / expensive
 ```
 
 The primary PQI is based on import price.
 
-For future prices, the comparison population is the available price intervals
-for today and tomorrow.
+For future prices, the comparison population is the available price
+intervals for today and tomorrow.
 
-For historical/current-day interpretation, the relevant available daily price
-distribution is used.
+PQI is a price-quality metric. It is not the same thing as the Energy
+Dashboard Smart Score.
 
-The exact mathematical transformation is deliberately left to FAS 3 so it can
-be tested and documented before becoming implementation-locked.
+------------------------------------------------------------------------
 
----
+## 13. Cheapest Future Period
 
-## 13. Cheapest Period
+SBE shall be able to identify the cheapest available future price
+period.
 
-The Energy Intelligence Card V1 shall be able to identify the cheapest
-available future price period.
+The result must be derived only from normalized future price data
+available from the central price source.
 
-This is a V1 requirement.
+The calculation must never require price data beyond today + tomorrow.
 
-The result must be derived from the normalized future price data.
+Advanced autonomous optimization/control remains outside this contract.
 
-The implementation must not assume a fixed price threshold.
-
-Advanced optimization such as:
-
-> "Find the cheapest continuous 3-hour window"
-
-is outside V1 and belongs in the future backlog.
-
----
+------------------------------------------------------------------------
 
 ## 14. Economy Contract
 
 Existing SBE economy entities remain authoritative.
 
-Where required for the Energy Intelligence Card, SBE shall provide a clearly
-defined house-cost value.
+Where required for the Energy Dashboard, SBE shall provide clearly
+defined house-cost values.
 
-The semantic distinction between:
+### 14.1 Cost rule
 
-- actual grid purchase cost;
-- value of self-produced solar energy;
-- opportunity cost;
-- export income;
-- savings;
+The canonical dashboard cost definition is:
 
-must remain explicit.
+``` text
+Cost = actual electricity purchase cost
+     = imported energy × applicable total import price
+```
+
+The following must remain separate:
+
+``` text
+actual grid purchase cost
+solar avoided cost/value
+battery avoided cost/value
+export income
+savings
+opportunity cost
+```
 
 Cards must not silently mix these concepts.
 
-A house-cost definition must therefore be finalized and tested in FAS 3 before
-implementation is released.
-
----
+------------------------------------------------------------------------
 
 ## 15. Generic Consumer Contract
 
@@ -413,41 +455,43 @@ A Consumer is not a hardcoded device category.
 
 Examples:
 
-- car;
-- pool;
-- spa;
-- heat pump;
-- washing machine;
-- server;
-- any other measurable load.
+-   car;
+-   pool;
+-   spa;
+-   heat pump;
+-   washing machine;
+-   server;
+-   any other measurable load.
 
 ### Required
 
-```text
+``` text
 name
 energy_entity
 ```
 
 ### Optional
 
-```text
+``` text
 power_entity
 icon
 color
 ```
 
-The energy entity is the authoritative source for historical energy analysis.
+The energy entity is the authoritative source for historical energy
+analysis.
 
 The optional power entity may be used for real-time display.
 
-SBE should not integrate or calculate energy for a consumer from power merely
-because a power entity exists in V1.
+SBE should not create or integrate consumer energy from power merely
+because a power entity exists.
 
----
+------------------------------------------------------------------------
 
 ## 16. Consumer Configuration
 
-Consumers shall be configured through Home Assistant Config Flow.
+Consumers shall be configurable through Home Assistant Config Flow /
+Options Flow.
 
 Consumers belong to the relevant SBE config entry.
 
@@ -455,263 +499,352 @@ The data model must support an arbitrary number of consumers.
 
 The card may impose a practical display limit independently.
 
-There shall be no hardcoded concepts such as:
-
-```text
-EV
-SPA
-HEATPUMP
-```
-
-in the consumer data model.
+There shall be no hardcoded concepts such as EV, SPA or HEATPUMP in the
+consumer data model.
 
 Consumer groups are outside V1.
 
----
+------------------------------------------------------------------------
 
 ## 17. Consumer Analysis
 
 For a configured consumer, the system should support:
 
-```text
+``` text
 Energy
 Cost
 Average Price
 ```
 
-and, where the data permits:
+Where the data permits:
 
-```text
+``` text
 Cheap Usage %
 Expensive Usage %
 ```
 
-The Energy Intelligence Card may visualize these values.
+**Consumer Cost MUST use total import price, never spot price.**
 
-The consumer's original energy entity remains the authoritative source for its
-energy history.
+The consumer's original energy entity remains the authoritative source
+for its energy history.
 
----
+------------------------------------------------------------------------
 
 ## 18. Historical Data Contract
 
-Historical visualization uses Home Assistant's Recorder/statistics/history
+Historical visualization uses Home Assistant Recorder/statistics/history
 mechanisms.
 
-SBE provides correctly classified sensors and persistent cumulative values.
+SBE provides correctly classified sensors and persistent cumulative
+values.
 
-The Energy Intelligence Card retrieves historical data through Home Assistant.
+The Energy Dashboard retrieves historical data through Home Assistant.
 
 The card must not maintain a second persistent history database.
 
-Target primary history window:
+### Dashboard history window
 
-```text
-24 hours backwards
+``` text
+maximum 24 hours backwards
 ```
 
-Target future window:
+The Energy Dashboard must not request or depend on more than 24 hours of
+historical data for its primary timeline/analysis window.
 
-```text
-24 hours forwards
+------------------------------------------------------------------------
+
+## 19. Energy Dashboard Future Window
+
+The Energy Dashboard's future price visualization may use:
+
+``` text
+current moment
+→ remaining available intervals today
+→ tomorrow's available intervals
 ```
 
----
+Maximum future horizon:
 
-## 19. Card Responsibilities
+``` text
+end of tomorrow's available Nord Pool data
+```
 
-### Solar Battery Economy
+There is no 3-day, 7-day or extrapolated price forecast in V1.
 
-Responsible for:
+------------------------------------------------------------------------
 
-- data ingestion;
-- canonical energy flow calculations;
-- accumulation;
-- economy calculations;
-- persistence;
-- price normalization;
-- price intelligence;
-- consumer configuration/metadata;
-- canonical definitions.
+## 20. Energy Dashboard Functional Contract
 
-### Solar Battery Economy Flow Card
+The approved mockup is the visual/functional target.
 
-Responsible for:
+It defines:
 
-- real-time visualization;
-- energy flow rendering;
-- presentation and interaction.
-
-It should consume SBE's canonical data wherever practical.
-
-### Energy Intelligence Card
-
-Responsible for:
-
-- price visualization;
-- historical price + consumption visualization;
-- future price visualization;
-- consumer analysis;
-- presentation of price intelligence;
-- live and historical views.
-
-### Phase Load Card
-
-Remains focused on phase loading and electrical installation visualization.
-
-It may later consume common SBE data where this provides clear value, but this
-is not a requirement of the initial SBE data contract.
-
----
-
-## 20. Energy Intelligence Card V1 — Functional Contract
-
-The frozen visual target is based on the approved desktop "D Deep Dive"
-concept and mobile "B Timeline Fusion" concept.
-
-The mockup defines:
-
-- visual language;
-- information hierarchy;
-- intended information density;
-- functional intent.
+-   information hierarchy;
+-   intended density;
+-   visual language;
+-   functional intent.
 
 It is not a pixel-perfect implementation requirement.
 
 ### Main concepts
 
-#### Live
+#### Live Price
 
 Show:
 
-- current import price;
-- price class;
-- Price Quality Index;
-- current status;
-- relevant near-term price information;
-- cheapest upcoming period.
+-   current spot price where the visual explicitly represents market
+    price;
+-   price class;
+-   Price Quality Index;
+-   current status;
+-   relevant near-term price information;
+-   cheapest upcoming period.
 
-#### History
+#### Price Statistics
 
-Primary visualization:
+Support:
 
-```text
-24h history
-price + actual consumption
+-   lowest available price for the defined current-day population;
+-   highest available price for the defined current-day population;
+-   average available price for the defined current-day population.
+
+The exact statistical population and interval-selection semantics must
+be finalized before implementation.
+
+#### Timeline
+
+Primary timeline:
+
+``` text
+maximum 24h history
++
+current moment
++
+available future price data through today + tomorrow
 ```
 
-The historical visualization is the main visual element.
+Historical data:
 
-Consumers may be selected to compare their energy use with the price curve.
+-   actual price;
+-   actual house consumption;
+-   configured consumer usage where available.
 
-#### Future
+Future data:
 
-Primary future visualization:
+-   known 15-minute price intervals only.
 
-```text
-24h forward
-15-minute price intervals
+Historical and future data must be visually distinguishable.
+
+#### Energy and Economy
+
+The dashboard may show:
+
+-   house consumption;
+-   import cost;
+-   consumer energy;
+-   consumer cost;
+-   energy shares;
+-   battery contribution;
+-   other canonical SBE metrics.
+
+All cost values use total import price.
+
+#### Insights
+
+The dashboard may present deterministic analytical insights derived from
+canonical data.
+
+Examples include:
+
+-   share of consumption during cheaper-price periods;
+-   expensive consumption periods;
+-   highest-cost periods;
+-   consumer price alignment.
+
+Insight definitions must be specified before implementation.
+
+------------------------------------------------------------------------
+
+## 21. Smart Score
+
+The mockup contains a Smart Score on a 0--100 scale.
+
+Smart Score is NOT synonymous with Price Quality Index.
+
+PQI answers:
+
+``` text
+How favorable is the current/future electricity price?
 ```
 
-The future section should visually connect with the historical timeline while
-remaining clearly distinguishable from actual historical data.
+Smart Score is intended to answer a broader question about the quality
+of the household's energy usage/economic behavior.
 
-Unknown future intervals must remain visually neutral.
+The exact Smart Score algorithm is NOT yet frozen.
 
----
+Before implementation it must be:
 
-## 21. Design/Information Rules
+1.  defined;
+2.  mathematically specified;
+3.  tested;
+4.  documented;
+5.  versioned as part of the stable contract.
 
-The Energy Intelligence Card should make the following immediately apparent:
+No card may invent its own Smart Score calculation.
 
-1. Is electricity cheap or expensive now?
-2. What happened to consumption when prices changed?
-3. When is the next favorable period?
-4. How much did selected loads consume?
-5. How did those loads align with electricity prices?
+------------------------------------------------------------------------
 
-The card should favor visual comprehension over displaying large numbers of
-individual metrics simultaneously.
+## 22. Card Responsibilities
 
----
+### Solar Battery Economy
 
-## 22. Backward Compatibility
+Responsible for:
+
+-   data ingestion;
+-   canonical energy flow calculations;
+-   accumulation;
+-   economy calculations;
+-   persistence;
+-   price normalization;
+-   price intelligence;
+-   consumer configuration/metadata;
+-   canonical analytical definitions.
+
+### Solar Battery Economy Flow Card
+
+Responsible for:
+
+-   real-time visualization;
+-   energy flow rendering;
+-   presentation and interaction.
+
+Its primary role is:
+
+> What is happening with power right now?
+
+### Energy Dashboard
+
+Responsible for:
+
+-   energy summary;
+-   economy summary;
+-   price visualization;
+-   historical price + consumption visualization;
+-   future price visualization;
+-   consumer analysis;
+-   presentation of price intelligence;
+-   deterministic insight presentation.
+
+Its primary role is:
+
+> What happened, what did it cost, and how is it going?
+
+### Phase Load Card
+
+Remains focused on phase loading and electrical installation
+visualization.
+
+------------------------------------------------------------------------
+
+## 23. Dashboard Design Rules
+
+The Energy Dashboard should make the following immediately apparent:
+
+1.  Is electricity cheap or expensive now?
+2.  What happened to consumption when prices changed?
+3.  When is the next favorable period?
+4.  How much did selected loads consume?
+5.  What did that consumption cost?
+6.  How well did selected loads align with electricity prices?
+7.  What meaningful insight can be derived from the last 24 hours?
+
+The dashboard should favor visual comprehension over displaying large
+numbers of individual metrics simultaneously.
+
+------------------------------------------------------------------------
+
+## 24. Backward Compatibility
 
 The following are protected:
 
-- existing entity unique IDs;
-- existing entity meanings;
-- existing units;
-- existing energy semantics;
-- existing accumulated values;
-- existing persistent state behavior.
+-   existing entity unique IDs;
+-   existing entity meanings;
+-   existing units;
+-   existing energy semantics;
+-   existing accumulated values;
+-   existing persistent state behavior.
 
 Changes must be additive wherever reasonably possible.
 
-If an existing sensor must change for correctness, the migration impact must be
-identified before implementation.
+If an existing sensor must change for correctness, the migration impact
+must be identified before implementation.
 
 No existing entity should be removed or repurposed silently.
 
----
+------------------------------------------------------------------------
 
-## 23. V1 Explicit Boundaries
+## 25. V1 Explicit Boundaries
 
-The following are explicitly OUTSIDE the V1 implementation unless the scope is
-formally changed:
+The following are outside V1 unless the scope is formally changed:
 
-- automatic EV charging control;
-- automatic battery control;
-- automatic appliance control;
-- autonomous energy optimization;
-- AI-based control;
-- consumer groups;
-- multi-hour optimal charging-window optimization;
-- a second persistent history database;
-- hardcoded appliance categories;
-- replacing the existing SBE architecture wholesale;
-- merging the separate Lovelace repositories.
+-   automatic EV charging control;
+-   automatic battery control;
+-   automatic appliance control;
+-   autonomous energy optimization;
+-   AI-based control;
+-   consumer groups;
+-   multi-hour autonomous optimal charging control;
+-   a second persistent history database;
+-   hardcoded appliance categories;
+-   replacing the existing SBE architecture wholesale;
+-   merging the separate Lovelace repositories;
+-   price forecasts beyond today + tomorrow;
+-   historical dashboard analysis beyond 24 hours.
 
-These may be maintained as future backlog ideas.
+------------------------------------------------------------------------
 
----
+## 26. FAS 3.1 Prerequisites
 
-## 24. FAS 3 Prerequisites
+Before implementation:
 
-Before implementation, the following must be specified and tested:
-
-1. Exact entity names for new SBE entities.
-2. Exact device classes and state classes.
-3. Exact house-cost definition.
-4. Exact Price Quality Index mathematical algorithm.
-5. Exact price-class boundaries.
-6. Exact structured forecast exposure mechanism.
-7. Exact Config Flow representation for Consumers.
-8. Migration/backward-compatibility behavior.
-9. Restore-state behavior for new cumulative entities.
+1.  Exact entity names for new SBE entities.
+2.  Exact device classes and state classes.
+3.  Exact house-cost definition.
+4.  Exact price-class boundaries.
+5.  Exact PQI mathematical algorithm.
+6.  Exact structured forecast exposure mechanism.
+7.  Exact Config Flow representation for Consumers.
+8.  Migration/backward-compatibility behavior.
+9.  Restore-state behavior for new cumulative entities.
 10. Unit and rounding conventions.
+11. Exact Smart Score definition.
+12. Exact price-statistics population.
+13. Exact 24h historical aggregation semantics.
+14. Exact consumer cost semantics.
+15. Exact deterministic insight definitions.
 
----
+------------------------------------------------------------------------
 
-## 25. Source of Truth Rule
+## 27. Source of Truth Rule
 
-If a future implementation decision conflicts with this document, the document
-wins unless the user explicitly approves a change.
+If a future implementation decision conflicts with this document, the
+document wins unless the user explicitly approves a change.
 
-Any approved change to the contract must update this document before or together
-with the corresponding implementation.
+Any approved change to the contract must update this document before or
+together with the corresponding implementation.
 
----
+------------------------------------------------------------------------
 
-## 26. Current Status
+## 28. Current Status
 
-```text
-FAS 0 — Project Definition       COMPLETE / FROZEN
-FAS 1 — Data Gap Analysis        COMPLETE / APPROVED
-FAS 2A — Architecture Decisions  COMPLETE / FROZEN
-FAS 2B — Energy Data Contract    COMPLETE / FROZEN
-
-FAS 3 — SBE Implementation       NOT STARTED
+``` text
+FAS 0 — Project Definition          COMPLETE / FROZEN
+FAS 1 — Data Gap Analysis           COMPLETE / APPROVED
+FAS 2A — Architecture Decisions     COMPLETE / FROZEN
+FAS 2B — Energy Data Contract       UPDATED / FROZEN
+FAS 3 — SBE Implementation          NOT YET STARTED
+FAS 3.1 — Dashboard Data Spec       IN PROGRESS
 ```
 
-**Next approved step:** FAS 3 — implementation planning and migration design.
+**Next approved step:** finalize the Energy Dashboard Data Specification
+and Data Gap Matrix before production-code changes.

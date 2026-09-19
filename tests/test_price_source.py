@@ -452,3 +452,41 @@ def test_find_cheapest_future_period_excludes_current_interval():
     assert result["start"] == datetime(2026, 9, 11, 10, 15)
     assert result["end"] == datetime(2026, 9, 11, 10, 30)
     assert result["average_import_price"] == 0.80
+
+def test_calculate_today_spot_statistics_uses_today_through_now():
+    calculate_today_spot_statistics = price_source.calculate_today_spot_statistics
+    now = datetime.fromisoformat("2026-09-19T12:07:00+02:00")
+    forecast = [
+        {
+            "start": datetime.fromisoformat("2026-09-18T23:45:00+02:00"),
+            "end": datetime.fromisoformat("2026-09-19T00:00:00+02:00"),
+            "spot": 9.0,
+        },
+        {
+            "start": datetime.fromisoformat("2026-09-19T00:00:00+02:00"),
+            "end": datetime.fromisoformat("2026-09-19T00:15:00+02:00"),
+            "spot": 1.0,
+        },
+        {
+            "start": datetime.fromisoformat("2026-09-19T11:45:00+02:00"),
+            "end": datetime.fromisoformat("2026-09-19T12:00:00+02:00"),
+            "spot": 2.0,
+        },
+        {
+            "start": datetime.fromisoformat("2026-09-19T12:00:00+02:00"),
+            "end": datetime.fromisoformat("2026-09-19T12:15:00+02:00"),
+            "spot": 3.0,
+        },
+        {
+            "start": datetime.fromisoformat("2026-09-19T12:15:00+02:00"),
+            "end": datetime.fromisoformat("2026-09-19T12:30:00+02:00"),
+            "spot": 99.0,
+        },
+    ]
+    result = calculate_today_spot_statistics(forecast, now=now)
+    assert result == {
+        "lowest_spot_price": 1.0,
+        "highest_spot_price": 3.0,
+        "average_spot_price": 2.0,
+        "interval_count": 3,
+    }

@@ -16,6 +16,7 @@ from .const import (
     CONF_PRICE_SOURCE,
     CONF_PRICE_PERIOD_MINUTES,
     CONF_PRICE_SELECTION_MODE,
+    CONF_CONSUMERS,
     CONF_INVESTMENT,
     DEFAULT_VERY_CHEAP_LIMIT,
     DEFAULT_CHEAP_LIMIT,
@@ -247,6 +248,20 @@ def _build_schema(defaults=None):
                                 "label": "Cheapest quarters",
                             },
                         ]
+                    }
+                }
+            ),
+
+            # ----- Energy Dashboard consumers -----
+            vol.Optional(
+                CONF_CONSUMERS,
+                default=defaults.get(CONF_CONSUMERS, []),
+            ): selector(
+                {
+                    "entity": {
+                        "domain": "sensor",
+                        "device_class": "energy",
+                        "multiple": True,
                     }
                 }
             ),

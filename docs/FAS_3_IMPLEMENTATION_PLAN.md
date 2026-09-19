@@ -1,99 +1,104 @@
-# FAS 3 — SBE Implementation & Migration Plan
+# FAS 3 --- SBE Implementation & Migration Plan
 
-**Project:** Solar Battery Economy  
-**Status:** PLANNING — no implementation changes made  
-**Source of Truth:** `docs/ENERGY_DATA_CONTRACT.md`  
-**Current code baseline:** SBE 1.4.0  
-**Planning revision:** Dashboard-driven implementation plan
+**Project:** Solar Battery Economy\
+**Status:** PLANNING --- no implementation changes made by this
+document\
+**Source of Truth:** `docs/ENERGY_DATA_CONTRACT.md`\
+**Current code baseline:** SBE 1.4.0
 
----
+------------------------------------------------------------------------
 
 ## 1. Purpose
 
-This document defines the implementation plan for extending Solar Battery Economy into the central data/intelligence engine for:
+This document defines the implementation plan for extending Solar
+Battery Economy into the central data/intelligence engine for:
 
-- Solar Battery Economy Flow Card
-- Energy Intelligence Card
-- future/common data needs of Phase Load Card
-
-The primary objective of FAS 3 is **not to redesign the cards**. The first objective is to identify and implement the canonical data that the new dashboard requires and that SBE does not currently provide.
+-   Solar Battery Economy Flow Card;
+-   Energy Dashboard;
+-   future/common data needs of Phase Load Card.
 
 The plan is deliberately incremental.
 
-The existing SBE architecture is preserved wherever practical. The objective is to add the minimum required capabilities without breaking existing users, entities, accumulated values or historical continuity.
+The existing SBE architecture is preserved wherever practical.
 
-No code change should be made outside the approved scope in this document without explicitly updating the project plan.
+The objective is to add the minimum required capabilities without
+breaking existing users, entities, accumulated values or historical
+continuity.
 
----
+No code change should be made outside the approved scope without
+explicitly updating the project plan.
 
-# 2. Current Baseline
+------------------------------------------------------------------------
 
-The supplied SBE 1.4.0 implementation contains:
+## 2. Target Product Architecture
 
-- Config Flow
-- Coordinator
-- event-driven updates
-- eight directional power flows
-- eight accumulated energy flows
-- persistent Store for accumulated energy/money
-- economy/savings calculations
-- battery-origin money attribution
-- current import/export price sensors
-- battery/economy analytics
-- Advanced Mode
-- diagnostic price-data counter
-
-Current implementation files:
-
-```text
-custom_components/solar_battery_economy/
-├── __init__.py
-├── config_flow.py
-├── const.py
-├── coordinator.py
-├── economy_calculations.py
-├── flow_calculation.py
-├── manifest.json
-├── sensor.py
-├── sensor_base.py
-├── sensor_helpers.py
-└── strings.json
+``` text
+SBE
+│
+├── canonical energy data
+├── canonical economy data
+├── normalized price data
+├── price intelligence
+├── consumer analysis
+└── deterministic insights
+        │
+        ├───────────────┬───────────────┐
+        ▼               ▼               ▼
+ Energy Dashboard    Flow Card     Phase Load Card
 ```
 
----
+The Energy Dashboard is now the primary driver for the new data
+requirements.
 
-# 3. Implementation Principles
+The Flow Card is not to be expanded merely to support dashboard
+functionality.
 
-## 3.1 Dashboard-first
+------------------------------------------------------------------------
 
-FAS 3 is driven by the actual data requirements of the new dashboard.
+## 3. Current Baseline
 
-Before implementing a capability, we ask:
+The current SBE implementation contains:
 
-1. Does the dashboard require this data?
-2. Does SBE already provide it?
-3. Can an existing SBE entity satisfy the requirement?
-4. If not, what is the smallest canonical addition required?
+-   Config Flow;
+-   Coordinator;
+-   event-driven updates;
+-   directional power flows;
+-   accumulated energy;
+-   persistent Store;
+-   economy/savings calculations;
+-   battery-origin money attribution;
+-   current import/export price sensors;
+-   price normalization/intelligence;
+-   price quality index;
+-   cheapest future period;
+-   diagnostic price-data handling.
 
-This prevents implementing attractive but unnecessary functionality before the dashboard can use the data.
+Existing verified behavior must be preserved.
 
-## 3.2 Additive first
+------------------------------------------------------------------------
 
-Prefer adding new entities/data structures over modifying existing public entities.
+## 4. Implementation Principles
 
-## 3.3 Preserve existing entity identity
+### 4.1 Additive first
 
-Do not change existing unique IDs, names, units or semantics unless a documented migration is unavoidable.
+Prefer adding new entities/data structures over modifying existing
+public entities.
 
-## 3.4 Do not rebuild SBE
+### 4.2 Preserve existing identity
 
-The existing coordinator/flow/economy architecture is retained.
+Do not change existing unique IDs, names, units or semantics unless a
+documented migration is unavoidable.
 
-## 3.5 Separate data ownership
+### 4.3 Do not rebuild SBE
 
-```text
+The existing coordinator/flow/economy architecture remains the
+foundation.
+
+### 4.4 Separate data ownership
+
+``` text
 SBE
-  = canonical calculations + normalized data
+  = canonical calculations + normalized data + intelligence
 
 HA Recorder
   = historical storage
@@ -102,253 +107,206 @@ Lovelace cards
   = visualization + presentation
 ```
 
-## 3.6 No card-specific business logic in the cards
+### 4.5 No card-specific business logic
 
-The cards should consume canonical SBE data.
+Cards consume canonical SBE data.
 
-## 3.7 Avoid sensor explosion
+### 4.6 No sensor explosion
 
-High-cardinality data such as 15-minute forecast intervals must be represented as structured data, not one entity per interval.
+15-minute forecast data remains structured data.
 
-## 3.8 Test every persistence-sensitive change
+### 4.7 Test persistence-sensitive changes
 
-Existing energy/money persistence is a critical part of the integration.
+Energy/money persistence is critical.
 
-## 3.9 Configuration belongs with SBE
+------------------------------------------------------------------------
 
-Where the dashboard currently requires the user to manually provide a data source that logically belongs to the SBE data model, that configuration should progressively move into the SBE Config Flow / Options Flow.
-
-The goal is that cards consume SBE's canonical configuration rather than maintaining duplicate device configuration.
-
----
-
-# 4. Dashboard Data Gap Analysis — FAS 3 Driver
-
-The new dashboard is the primary consumer of the expanded SBE data model.
-
-The following categories have been identified as the relevant gaps or consolidation opportunities.
-
-## 4.1 Already available in SBE
-
-The following core energy-flow information already exists and should be reused:
-
-- Solar → House
-- Solar → Battery
-- Solar → Grid
-- Battery → House
-- Battery → Grid
-- Grid → House
-- Grid → Battery
-- House → Grid
-
-The existing eight directional power flows and accumulated energy flows remain part of the public compatibility surface.
-
-The dashboard must not recreate these calculations independently.
-
-## 4.2 Data that should become canonical in SBE
-
-The dashboard requires or benefits from canonical versions of:
-
-### House
-
-- total house energy
-- house power, where derivable from existing canonical flows
-- house cost/economic interpretation
-
-### Price
-
-- current normalized price
-- import price
-- export price
-- structured future price data
-- price classification
-- Price Quality Index
-- cheapest future period
-
-### Consumers
-
-For configured consumers:
-
-- name
-- energy entity
-- optional power entity
-- optional icon
-- optional presentation metadata
-- energy
-- cost
-- average price
-- supported cheap/expensive usage metrics
-- SOC where a suitable source exists
-
-### Consumer configuration
-
-The dashboard currently has consumers such as the car configured separately.
-
-The target architecture is that relevant consumer configuration is owned by SBE and exposed to cards through the SBE data model.
-
-This includes the car and other configurable consumers, but does **not** mean that SBE should contain hardcoded EV, spa, heat-pump or other device-specific logic.
-
-## 4.3 SOC
-
-State of Charge must be treated as a first-class optional consumer attribute where an appropriate source exists.
-
-Example:
-
-```text
-Consumer
-├── name
-├── energy_entity
-├── power_entity
-├── soc_entity       optional
-├── icon              optional
-└── presentation     optional
-```
-
-SOC is primarily presentation/current-state information. It must not be confused with the authoritative historical energy entity.
-
-SBE should not invent SOC from power or energy unless a separate, explicitly defined calculation is later approved.
-
-## 4.4 Data that remains presentation-owned
-
-The following remain card responsibilities:
-
-- visual layout
-- animations
-- SVG rendering
-- node appearance
-- flow animation
-- responsive layout
-- dashboard-specific visual grouping
-- visual status indicators derived from canonical SBE data
-
-SBE supplies the data; the card decides how to display it.
-
----
-
-# 5. Phase 3.1 — Establish Test/Baseline Foundation
+# FAS 3.1 --- Energy Dashboard Data Specification
 
 ## Objective
 
-Protect SBE 1.4.0 before making implementation changes.
+Before new implementation, map the approved dashboard mockup to exact
+data requirements.
 
-The development branch must contain a known-good baseline.
+No dashboard UI implementation occurs during this phase.
 
-Required baseline:
+------------------------------------------------------------------------
 
-```text
-SBE 1.4.0
-        |
-        v
-regression tests
-        |
-        v
-new FAS 3 development
+## 5. Dashboard Data Gap Matrix
+
+Every mockup component must be classified as:
+
+``` text
+GREEN  = existing and verified
+YELLOW = partially available / needs verification or aggregation
+RED    = missing canonical capability
+WHITE  = presentation only
 ```
 
-Before production behavior is changed:
+For every metric record:
 
-- establish the existing test structure;
-- capture the current public sensor semantics;
-- verify existing flow calculations;
-- verify persistence behavior;
-- verify current price behavior;
-- verify current configuration keys.
+``` text
+Dashboard component
+→ metric definition
+→ data source
+→ existing entity/structured data
+→ Recorder dependency
+→ SBE gap
+→ implementation requirement
+```
 
-No feature implementation should be mixed into this step.
+------------------------------------------------------------------------
 
----
+## 6. Required Definition Decisions
 
-# 6. Phase 3.2 — Internal Data Model Preparation
+Before implementation, finalize:
+
+1.  Current price display semantics.
+2.  Lowest/highest/average price population.
+3.  House cost definition.
+4.  Consumer cost definition.
+5.  Cheap-use definition.
+6.  Expensive-use definition.
+7.  Costliest consumption period definition.
+8.  Smart Score algorithm.
+9.  Insight definitions.
+10. Exact consumer analysis windows.
+11. Rounding conventions.
+12. Handling of unavailable historical data.
+13. Handling of unavailable tomorrow prices.
+
+------------------------------------------------------------------------
+
+## 7. Locked Time Rules
+
+### History
+
+``` text
+maximum 24 hours backwards
+```
+
+### Future
+
+``` text
+only available central Nord Pool data
+today + tomorrow
+```
+
+### Prohibited
+
+-   history beyond 24h for the dashboard's primary analysis;
+-   forecast beyond tomorrow;
+-   extrapolated prices;
+-   guessed future values;
+-   stale future prices presented as current known data.
+
+------------------------------------------------------------------------
+
+## 8. Locked Cost Rule
+
+All dashboard cost calculations use:
+
+``` text
+total import price
+```
+
+Never:
+
+``` text
+spot price
+```
+
+This applies to:
+
+-   house cost;
+-   consumer cost;
+-   cost per time period;
+-   average purchase cost;
+-   cost-based insights;
+-   price/consumption cost correlations.
+
+Spot price remains available for market-price visualization.
+
+------------------------------------------------------------------------
+
+# FAS 3.2 --- Internal Data Model
 
 ## Objective
 
-Introduce a clean internal data model without changing public behavior.
+Ensure coordinator data can cleanly represent:
 
-Coordinator data will evolve from:
-
-```python
-{
-    "power": {},
-    "energy": {},
-    "money": {},
-    "savings": {},
-}
-```
-
-toward a structured model that can also contain:
-
-```text
+``` text
+power
+energy
+money
+savings
 price
 price_intelligence
 consumers
-house
+insights
 ```
-
-The exact Python representation will be selected during implementation based on Home Assistant compatibility and testability.
-
-### Important
 
 Existing keys under:
 
-```text
+``` text
 power
 energy
 money
 savings
 ```
 
-must remain compatible with current sensors.
+must remain compatible with existing sensors.
 
----
+The exact Python representation must prioritize Home Assistant
+compatibility and testability.
 
-# 7. Phase 3.3 — Canonical House Energy
+------------------------------------------------------------------------
+
+# FAS 3.3 --- Canonical House Energy
 
 ## Objective
 
-Expose total house consumption as a first-class SBE energy entity.
+Expose/verify canonical house consumption:
 
-Definition:
-
-```text
+``` text
 house_total =
     solar_house
   + battery_house
   + grid_house
 ```
 
-### New entity
-
-Conceptual name:
-
-```text
-Energy House Total
-```
-
 Required semantics:
 
-```text
-unit: kWh
+``` text
+kWh
 device_class: energy
 state_class: total_increasing
 ```
 
-It must use the same persistent accumulation model as the existing energy sensors.
+Existing directional energy entities remain untouched.
 
-### No change
+If House Total is already correctly implemented, do not reimplement it
+unnecessarily; verify and document it instead.
 
-The existing eight energy-flow entities remain untouched.
+------------------------------------------------------------------------
 
----
-
-# 8. Phase 3.4 — Price Source Adapter
+# FAS 3.4 --- Price Source Adapter
 
 ## Objective
 
-Allow SBE to consume the user's existing structured Nord Pool template sensor.
+Consume the user's existing structured Nord Pool template source.
 
-The current upstream source provides current data plus structured future intervals containing fields such as:
+Input:
 
-```text
+``` text
+current price
+all_prices[]
+tomorrow_available
+```
+
+Intervals:
+
+``` text
 start
 end
 spot
@@ -356,207 +314,153 @@ import
 export
 ```
 
-Architecture:
+Output:
 
-```text
-User's structured Nord Pool template sensor
-                    |
-                    v
-              SBE Price Adapter
-                    |
-                    v
-             normalized Price Model
-                    |
-                    v
-             dashboard consumers
+``` text
+normalized Price Model
 ```
 
-### Important
+The upstream Nord Pool template must not be modified.
 
-The cards must not depend on the user's specific template sensor name.
+------------------------------------------------------------------------
 
-The source entity must be configurable.
+# FAS 3.5 --- Price Intelligence
 
-### Compatibility
+Required canonical concepts:
 
-The existing current import/export price configuration remains valid.
-
-We should extend configuration rather than silently replace the current price inputs.
-
----
-
-# 9. Phase 3.5 — Price Intelligence
-
-## Objective
-
-Add canonical price interpretation required by the dashboard.
-
-Required concepts:
-
-```text
+``` text
 current_price_class
 price_quality_index
 cheapest_future_period
 ```
 
-Classes:
+Forecast:
 
-```text
-VERY_CHEAP
-CHEAP
-NORMAL
-EXPENSIVE
-VERY_EXPENSIVE
+``` text
+15-minute intervals
+today + tomorrow only
 ```
 
-PQI:
+No one-entity-per-interval implementation.
 
-```text
-0–100
-```
+No price forecast beyond the upstream data horizon.
 
-where higher means better/cheaper.
+------------------------------------------------------------------------
 
-## Algorithm
-
-The exact percentile/boundary algorithm must not be invented during coding.
-
-It must be:
-
-1. specified;
-2. unit-tested;
-3. documented;
-4. then considered part of the stable contract.
-
-## Forecast
-
-The normalized forecast contains:
-
-```text
-start
-end
-spot
-import
-export
-price_class
-price_quality
-```
-
-No 96 forecast entities.
-
----
-
-# 10. Phase 3.6 — Generic Consumer Configuration
+# FAS 3.6 --- Generic Consumers
 
 ## Objective
 
-Move relevant dashboard consumer configuration into SBE.
+Provide configurable consumers:
 
-Conceptual model:
-
-```text
+``` text
 Consumer
 ├── name
-├── energy_entity       required
-├── power_entity        optional
-├── soc_entity          optional
-├── icon                optional
-└── presentation        optional
+├── energy_entity
+├── power_entity (optional)
+├── icon (optional)
+└── color (optional)
 ```
 
 Use Config Flow / Options Flow.
 
-Consumers belong to the relevant SBE config entry.
+Do not hardcode device categories.
 
-Example:
+Do not create consumer energy by integrating power in V1.
 
-```text
-name: Bil
-energy_entity: sensor.ev_energy
-power_entity: sensor.ev_power
-soc_entity: sensor.ev_soc
-icon: mdi:car
-```
+------------------------------------------------------------------------
 
-### Rules
+# FAS 3.7 --- Consumer Analysis
 
-- Energy entity is authoritative for historical analysis.
-- Power entity is optional and intended for live display.
-- SOC is optional and represents current battery state where available.
-- SBE does not create energy by integrating consumer power in V1.
-- Consumer groups are out of scope.
-- No hardcoded EV/spa/heat-pump logic.
+For each consumer, support where data permits:
 
-## Migration principle
-
-Existing card configuration must continue to work during the transition.
-
-The migration path should be:
-
-```text
-existing Flow Card consumer config
-              |
-              v
-SBE Consumer configuration
-              |
-              v
-Flow Card reads SBE configuration
-```
-
-Only after the SBE representation is verified should redundant card configuration be removed.
-
----
-
-# 11. Phase 3.7 — Consumer Analysis
-
-For each configured consumer, provide a canonical basis for:
-
-```text
+``` text
 energy
 cost
 average_price
-```
-
-Where supported by the available data:
-
-```text
 cheap_usage_percent
 expensive_usage_percent
 ```
 
-The first implementation should prioritize correctness and a clear data contract over sophisticated optimization.
+Consumer cost uses total import price.
 
-SOC remains separate from historical energy/cost analysis unless a future feature explicitly defines a calculation involving SOC.
+The source energy entity remains authoritative for historical energy.
 
----
+------------------------------------------------------------------------
 
-# 12. Phase 3.8 — House Economy Definition
+# FAS 3.8 --- House Economy
 
-Before exposing a new House Cost entity, finalize the exact semantic definition.
+Before exposing a new canonical House Cost entity, finalize its exact
+semantics.
 
-Do not simply add together unrelated SBE money values.
+Do not simply add unrelated SBE money values.
 
-The implementation must distinguish:
+Maintain separation between:
 
-```text
+``` text
 actual grid purchase cost
-solar avoided cost/value
-battery avoided cost/value
+solar avoided value
+battery avoided value
 export income
 savings
+opportunity cost
 ```
 
-A formal test matrix is required before this becomes a public sensor.
+All actual household purchase cost uses total import price.
 
-The dashboard should consume one clearly defined canonical house-cost value rather than independently reconstructing it from several money sensors.
+A formal test matrix is required.
 
----
+------------------------------------------------------------------------
 
-# 13. Existing Known Issue — Must Be Addressed Deliberately
+# FAS 3.9 --- Smart Score
+
+Define and test Smart Score before implementation.
+
+Smart Score is distinct from PQI.
+
+PQI:
+
+``` text
+price quality
+```
+
+Smart Score:
+
+``` text
+broader household energy/economic behavior
+```
+
+The algorithm must be deterministic and documented.
+
+No card-specific Smart Score formula is allowed.
+
+------------------------------------------------------------------------
+
+# FAS 3.10 --- Deterministic Insights
+
+Initial V1 insight candidates:
+
+``` text
+cheap_consumption
+expensive_consumption
+highest_cost_period
+lowest_cost_period
+consumer_cost
+consumer_share
+consumer_price_alignment
+```
+
+Insights should be deterministic and testable.
+
+AI-based autonomous control is not part of V1.
+
+------------------------------------------------------------------------
+
+# 10. Existing Known Issue
 
 The current helper `_float_state()` converts:
 
-```text
+``` text
 unknown
 unavailable
 invalid
@@ -564,27 +468,29 @@ invalid
 
 to:
 
-```text
+``` text
 0.0
 ```
 
-while coordinator money-booking logic checks for `None`.
+while money-booking logic checks for `None`.
 
-Therefore the intended "do not book money when price is unavailable" behavior is not fully aligned with the helper contract.
+This can create a mismatch in the intended "do not book money when price
+is unavailable" behavior.
 
-This is a correctness issue and must be resolved before the new price-dependent logic is considered stable.
+This correctness issue must be resolved deliberately before new
+price-dependent functionality is considered stable.
 
-It must be fixed deliberately, not as incidental cleanup.
+It must not be fixed as unrelated cleanup.
 
----
+------------------------------------------------------------------------
 
-# 14. Persistence and Migration Plan
+# 11. Persistence and Migration
 
 Every new cumulative sensor must survive restart.
 
 Tests must cover:
 
-```text
+``` text
 before restart
       |
       v
@@ -596,271 +502,196 @@ after restart
 
 Expected:
 
-- energy totals unchanged except for legitimate post-restart accumulation;
-- money totals unchanged except for legitimate post-restart accumulation;
-- install date preserved;
-- no artificial energy spike;
-- no reset to zero.
+-   energy totals unchanged except legitimate post-restart accumulation;
+-   money totals unchanged except legitimate post-restart accumulation;
+-   install date preserved;
+-   no artificial energy spike;
+-   no reset to zero.
 
 Existing Store schema must remain compatible.
 
-If the Store schema needs to change, implement an explicit migration rather than silently replacing stored data.
+Any schema change requires explicit migration.
 
----
+------------------------------------------------------------------------
 
-# 15. Config Flow Migration
+# 12. Config Flow Migration
 
-Current Config Flow has five required input entities.
+Current configuration must remain valid.
 
-We must preserve the current setup experience as much as practical.
+New configuration should be additive.
 
-New configuration sections are expected to include:
+Potential additions:
 
-```text
+``` text
 Price intelligence source
 Consumers
 ```
 
-Consumer configuration should support, where applicable:
-
-```text
-energy_entity
-power_entity
-soc_entity
-icon
-```
-
-The exact UI is to be designed after inspecting the current Home Assistant Config Flow APIs and supported selectors for the target Home Assistant version.
-
-### Important
-
 Do not remove or rename existing configuration keys.
 
----
+------------------------------------------------------------------------
 
-# 16. Sensor Implementation Strategy
+# 13. Sensor Strategy
 
-Existing `EnergySensor`, `MoneySensor`, `FlowPowerSensor` and economy sensor classes should be reused where semantics match.
+Reuse existing sensor classes where semantics match.
 
-Avoid creating many one-off classes if a generic, well-defined base class can represent the new sensor type safely.
+Avoid many one-off classes.
 
-New sensor classes are justified where the Home Assistant semantics differ materially.
+New classes are justified where Home Assistant semantics differ
+materially.
 
-Structured forecast and consumer configuration should remain structured data wherever possible rather than generating unnecessary entities.
+Do not change entity identity merely for implementation convenience.
 
----
+------------------------------------------------------------------------
 
-# 17. Dashboard Integration Boundary
-
-The dashboard integration happens **after the required SBE data exists and has been verified**.
-
-The sequence is:
-
-```text
-SBE data gap
-    |
-    v
-canonical SBE implementation
-    |
-    v
-unit/integration/persistence tests
-    |
-    v
-Flow Card consumes SBE data
-    |
-    v
-remove redundant card configuration only when safe
-```
-
-The Flow Card is therefore a consumer of SBE, not a second calculation engine.
-
-The same principle applies to the future Energy Intelligence Card.
-
----
-
-# 18. Documentation Updates During Implementation
-
-When FAS 3 implementation starts, documentation must be updated together with code.
-
-Expected documents:
-
-```text
-docs/
-├── ENERGY_DATA_CONTRACT.md
-├── ARCHITECTURE_NOTES.md
-├── V1.4.0_CODE_AUDIT.md
-├── DEVELOPMENT_WORKFLOW.md
-└── ...
-```
-
-New documents should only be created when they contain stable, useful information.
-
-The root README should be updated only when user-facing behavior changes.
-
----
-
-# 19. Testing Plan
-
-Before declaring the SBE implementation complete:
+# 14. Testing Plan
 
 ## Unit tests
 
-- existing flow calculations
-- house total calculation
-- price normalization
-- price classification
-- PQI
-- cheapest period
-- consumer calculations
-- SOC configuration/handling
-- house-cost calculation
+-   flow calculations;
+-   house total calculation;
+-   price normalization;
+-   price classification;
+-   PQI;
+-   cheapest period;
+-   consumer calculations;
+-   consumer cost;
+-   house-cost calculation;
+-   price statistics;
+-   Smart Score;
+-   deterministic insights.
 
 ## Integration/config tests
 
-- fresh install
-- existing configuration
-- options flow
-- consumer addition
-- consumer removal/update
-- invalid entity
-- unavailable entity
-- unavailable SOC entity
-- price source unavailable
+-   fresh install;
+-   existing configuration;
+-   options flow;
+-   consumer addition;
+-   consumer removal/update;
+-   invalid entity;
+-   unavailable entity;
+-   unavailable price source;
+-   unavailable tomorrow data.
 
 ## Persistence tests
 
-- energy restore
-- money restore
-- install date restore
-- new house total restore
-- migration from existing Store
+-   energy restore;
+-   money restore;
+-   install date restore;
+-   house total restore;
+-   migration from existing Store.
 
 ## Runtime tests
 
-- normal power updates
-- price changes
-- 15-minute price changes
-- unavailable price
-- unavailable consumer
-- unavailable SOC
-- Home Assistant restart
+-   normal power updates;
+-   price changes;
+-   15-minute price changes;
+-   unavailable price;
+-   unavailable consumer;
+-   unavailable tomorrow prices;
+-   Home Assistant restart;
+-   price horizon boundary.
 
-## Dashboard contract tests
+------------------------------------------------------------------------
 
-Verify that the canonical SBE data required by the new dashboard is available without the card having to reproduce business logic.
+# 15. Implementation Order
 
----
-
-# 20. Implementation Order
-
-The revised coding order is intentionally dashboard-driven:
-
-```text
-1. Establish tests / baseline
+``` text
+1. Finalize Data Specification
         |
-        v
-2. Internal data model
+2. Finalize Data Gap Matrix
         |
-        v
-3. Canonical House Total Energy
+3. Finalize Definition Decisions
         |
-        v
-4. Price source adapter
+4. Establish tests/baseline
         |
-        v
-5. Price intelligence
+5. Internal data model
         |
-        v
-6. Generic Consumer configuration
+6. Verify/complete House Total
         |
-        v
-7. Consumer analysis + SOC
+7. Price source adapter verification
         |
-        v
-8. Canonical House Cost
+8. Price intelligence verification
         |
-        v
-9. Verify SBE dashboard data contract
+9. Consumer configuration
         |
-        v
-10. Integrate Flow Card with SBE-owned configuration/data
+10. Consumer analysis
         |
-        v
-11. Persistence / migration verification
+11. House cost
         |
-        v
-12. Full regression test
+12. Smart Score
         |
-        v
-13. Documentation / release preparation
+13. Deterministic insights
+        |
+14. Persistence/migration verification
+        |
+15. Full regression test
+        |
+16. Documentation update
+        |
+17. Energy Dashboard design
 ```
 
-### Critical sequencing rule
+**No Energy Dashboard UI implementation occurs before the required
+SBE/data contract work is complete.**
 
-We do **not** begin by rewriting the Flow Card.
+------------------------------------------------------------------------
 
-We first make SBE capable of supplying the data the new dashboard actually needs.
-
-No dashboard visual rewrite occurs as part of the SBE implementation steps.
-
----
-
-# 21. Explicitly NOT Part of FAS 3
+# 16. Explicitly NOT Part of FAS 3
 
 Do not implement:
 
-- Energy Intelligence Card UI
-- Flow Card visual rewrite
-- Phase Load Card rewrite
-- automatic charging
-- automatic battery control
-- AI optimization
-- optimal multi-hour charging windows
-- consumer groups
-- second history database
-- repository merging
+-   Energy Dashboard UI;
+-   Flow Card visual rewrite;
+-   Phase Load Card rewrite;
+-   automatic charging;
+-   automatic battery control;
+-   AI optimization/control;
+-   consumer groups;
+-   autonomous optimal multi-hour charging;
+-   second history database;
+-   repository merging;
+-   forecast beyond today + tomorrow;
+-   dashboard history beyond 24h.
 
-The Flow Card **data-source/configuration migration** is part of FAS 3 because it is directly connected to the goal of making SBE the canonical data/configuration engine.
+------------------------------------------------------------------------
 
-The Flow Card's visual redesign remains a later phase.
-
----
-
-# 22. Definition of Done for SBE
+# 17. Definition of Done for SBE
 
 FAS 3 is complete only when:
 
-- existing SBE functionality still works;
-- existing entities remain compatible;
-- accumulated values survive restart;
-- House Total Energy is correct;
-- structured price data is normalized;
-- price intelligence is deterministic and tested;
-- Consumers can be configured generically;
-- SOC can be supplied where a suitable entity exists;
-- consumer analysis is correct;
-- relevant Flow Card consumer configuration can be owned by SBE;
-- the Flow Card can consume canonical SBE data without duplicating business logic;
-- historical data remains owned by HA Recorder;
-- no unnecessary sensor explosion exists;
-- documentation reflects the implementation;
-- regression tests pass;
-- no unrelated refactor has slipped into the release.
+-   existing SBE functionality still works;
+-   existing entities remain compatible;
+-   accumulated values survive restart;
+-   House Total is correct;
+-   structured price data is normalized;
+-   price intelligence is deterministic and tested;
+-   Consumers can be configured generically;
+-   consumer analysis is correct;
+-   all dashboard cost calculations use total import price;
+-   Smart Score is deterministic and tested;
+-   deterministic insights are tested;
+-   historical data remains owned by HA Recorder;
+-   dashboard history is limited to 24h;
+-   future price data is limited to today + tomorrow;
+-   no unnecessary sensor explosion exists;
+-   documentation reflects the implementation;
+-   regression tests pass;
+-   no unrelated refactor has slipped into the release.
 
----
+------------------------------------------------------------------------
 
-# 23. Phase Status
+## 18. Phase Status
 
-```text
-FAS 0 — Project Definition       COMPLETE / FROZEN
-FAS 1 — Data Gap Analysis        COMPLETE / APPROVED
-FAS 2A — Architecture Decisions  COMPLETE / FROZEN
-FAS 2B — Energy Data Contract    COMPLETE / FROZEN
+``` text
+FAS 0 — Project Definition          COMPLETE / FROZEN
+FAS 1 — Data Gap Analysis           COMPLETE / APPROVED
+FAS 2A — Architecture Decisions     COMPLETE / FROZEN
+FAS 2B — Energy Data Contract       UPDATED / FROZEN
 
-FAS 3 — Implementation Planning  UPDATED / APPROVED
-
-Next:
-FAS 3.1 — Establish test/baseline and prepare implementation
+FAS 3.1 — Dashboard Specification   IN PROGRESS
+FAS 3   — Implementation            NOT STARTED
 ```
 
-**No production code has been changed as part of this plan.**
+**Next approved step:** finalize the Data Gap Matrix and Definition
+Decisions.

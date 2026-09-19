@@ -5,6 +5,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers import entity_registry as er
 
 from .sensor_helpers import _float_state
 from .flow_calculation import calculate_flows
@@ -20,12 +21,30 @@ from .const import (
     CONF_EXPENSIVE_LIMIT,
     CONF_PRICE_PERIOD_MINUTES,
     CONF_PRICE_SELECTION_MODE,
+    CONF_CONSUMERS,
 )
 from .economy_calculations import calculate_savings, battery_solar_share
 from .price_source import find_cheapest_future_period
+from .price_source import calculate_today_spot_statistics
 from .price_source import normalize_price_source
+from .dashboard_data import (
+    build_consumer_dashboard_data,
+    build_energy_samples_from_statistics,
+    build_house_analysis,
+    extract_spot_price_history,
+)
+from .recorder_adapter import async_get_history, async_get_statistics
+from .recorder_data import clamp_history_window
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_numeric(value) -> bool:
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
@@ -55,6 +74,11 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             CONF_PRICE_SELECTION_MODE,
             "consecutive",
         )
+
+        configured_consumers = conf.get(CONF_CONSUMERS, [])
+        if isinstance(configured_consumers, str):
+            configured_consumers = [configured_consumers]
+        self.consumer_entities = list(configured_consumers or [])
 
         self.investment = conf.get("investment", 0)
         self.solar_investment = conf.get("solar_investment", 0)
@@ -101,6 +125,123 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             "price": {},
             "price_intelligence": {},
             "consumers": {},
+        }
+
+    def _get_energy_entity_id(self, key: str) -> str | None:
+        """Resolve an SBE energy sensor by its stable unique ID."""
+        registry = er.async_get(self.hass)
+        unique_id = f"{DOMAIN}_{self.entry.entry_id}_energy_{key}"
+        return registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+
+    async def async_get_dashboard_data(
+        self,
+        *,
+        start,
+        end,
+    ) -> dict:
+        """Return canonical Energy Dashboard data for a bounded history window."""
+        start, end = clamp_history_window(start=start, end=end)
+
+        house_total_entity = self._get_energy_entity_id("house_total")
+        grid_house_entity = self._get_energy_entity_id("grid_house")
+        consumer_entities = list(self.consumer_entities)
+
+        energy_ids = [
+            entity_id
+            for entity_id in [house_total_entity, grid_house_entity, *consumer_entities]
+            if entity_id
+        ]
+
+        price_history = await async_get_history(
+            self.hass,
+            [self.price_source_entity],
+            start=start,
+            end=end,
+            include_attributes=True,
+        )
+        price_states = price_history.get(self.price_source_entity, [])
+
+        statistics = await async_get_statistics(
+            self.hass,
+            set(entity_id for entity_id in energy_ids),
+            start=start,
+            end=end,
+            types={"change"},
+        )
+
+        house_total_stats = statistics.get(house_total_entity, []) if house_total_entity else []
+        grid_house_stats = statistics.get(grid_house_entity, []) if grid_house_entity else []
+
+        grid_house_samples = build_statistics_energy_samples_with_price_history(
+            grid_house_stats,
+            price_states,
+        )
+
+        house_total_history = []
+        if house_total_entity:
+            # Cumulative house total needs state history rather than change
+            # statistics so the 24h window can use the latest state at/before
+            # its start as the baseline.
+            house_history = await async_get_history(
+                self.hass,
+                [house_total_entity],
+                start=start,
+                end=end,
+            )
+            house_total_history = house_history.get(house_total_entity, [])
+
+        house = build_house_analysis(
+            house_total_history,
+            grid_house_samples,
+            start=start,
+            end=end,
+        )
+
+        consumers = {}
+        for entity_id in consumer_entities:
+            state = self.hass.states.get(entity_id)
+            name = state.name if state is not None else entity_id
+            samples = build_statistics_energy_samples_with_price_history(
+                statistics.get(entity_id, []),
+                price_states,
+            )
+            consumers[entity_id] = build_consumer_dashboard_data(
+                name=name,
+                energy_entity=entity_id,
+                samples=samples,
+            )
+
+        return {
+            "window": {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "hours": round((end - start).total_seconds() / 3600, 3),
+            },
+            "house": house,
+            "house_history": build_energy_samples_from_statistics(house_total_stats),
+            "grid_house_history": grid_house_samples,
+            "price_history": {
+                "import": [
+                    {
+                        "timestamp": item["timestamp"].isoformat(),
+                        "import": float(item["state"]),
+                    }
+                    for item in price_states
+                    if _is_numeric(item.get("state"))
+                ],
+                "spot": [
+                    {
+                        **item,
+                        "start": item["start"].isoformat(),
+                        "end": item["end"].isoformat(),
+                        "recorded_at": item["recorded_at"].isoformat(),
+                    }
+                    for item in extract_spot_price_history(price_states)
+                ],
+            },
+            "price": self.data.get("price", {}),
+            "price_intelligence": self.data.get("price_intelligence", {}),
+            "consumers": consumers,
         }
 
     # ---------------------------------------------------------
@@ -276,9 +417,25 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 current_price_class = current_price.get("price_class")
                 price_quality_index = current_price.get("price_quality")
 
+            self.data["consumers"] = {
+                entity_id: {
+                    "name": (
+                        self.hass.states.get(entity_id).name
+                        if self.hass.states.get(entity_id) is not None
+                        else entity_id
+                    ),
+                    "energy_entity": entity_id,
+                }
+                for entity_id in self.consumer_entities
+            }
+
             self.data["price_intelligence"] = {
                 "current_price_class": current_price_class,
                 "price_quality_index": price_quality_index,
+                "today_spot_statistics": calculate_today_spot_statistics(
+                    price_model.get("forecast", []),
+                    now=now,
+                ),
                 "cheapest_future_period": find_cheapest_future_period(
                     price_model.get("forecast", []),
                     now=now,

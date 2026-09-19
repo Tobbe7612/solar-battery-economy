@@ -153,8 +153,6 @@ def find_cheapest_future_period(
         selection_mode:
             "consecutive" selects one continuous block.
             "cheapest_quarters" selects the cheapest individual quarters.
-        horizon_hours:
-            Maximum number of future hours to search.
 
     Returns:
         A structured result describing the cheapest period, or None when
@@ -264,6 +262,44 @@ def find_cheapest_future_period(
         "end": selected[-1]["end"],
         "average_import_price": round(average_import, 4),
         "intervals": selected,
+    }
+
+
+def calculate_today_spot_statistics(
+    forecast: list[dict[str, Any]],
+    *,
+    now: datetime,
+) -> dict[str, Any] | None:
+    """Calculate today's spot-price statistics from midnight through now.
+
+    Only intervals belonging to the current calendar day and already started
+    before ``now`` are included. The current 15-minute interval is included
+    because its known spot price is already available.
+    """
+    local_now = now
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    intervals = [
+        interval
+        for interval in forecast
+        if interval.get("spot") is not None
+        and interval.get("start") is not None
+        and day_start <= interval["start"] <= local_now
+    ]
+
+    if not intervals:
+        return None
+
+    values = [float(interval["spot"]) for interval in intervals]
+    minimum = min(values)
+    maximum = max(values)
+    average = sum(values) / len(values)
+
+    return {
+        "lowest_spot_price": round(minimum, 4),
+        "highest_spot_price": round(maximum, 4),
+        "average_spot_price": round(average, 4),
+        "interval_count": len(intervals),
     }
 
 def normalize_price_source(

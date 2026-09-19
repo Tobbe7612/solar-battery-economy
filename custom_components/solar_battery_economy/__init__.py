@@ -3,6 +3,14 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import SolarBatteryEconomyCoordinator
 from .const import DOMAIN, PLATFORMS
+from .websocket import async_register_websocket_commands
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up Solar Battery Economy global services."""
+    hass.data.setdefault(DOMAIN, {})
+    async_register_websocket_commands(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
