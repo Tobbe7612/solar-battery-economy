@@ -89,3 +89,85 @@ def test_build_energy_samples_from_statistics_ignores_invalid_change():
     assert result == [
         {"start": start, "end": end, "energy_kwh": 0.25},
     ]
+
+def test_extract_spot_price_history_reconstructs_intervals_from_all_prices():
+    """Spot history should use the recorded all_prices schedule, not state timestamps."""
+    schedule = [
+        {
+            "start": "2026-09-19T00:00:00+02:00",
+            "end": "2026-09-19T00:15:00+02:00",
+            "spot": 0.10,
+            "import": 0.80,
+            "export": 0.13,
+        },
+        {
+            "start": "2026-09-19T00:15:00+02:00",
+            "end": "2026-09-19T00:30:00+02:00",
+            "spot": 0.20,
+            "import": 0.90,
+            "export": 0.23,
+        },
+        {
+            "start": "2026-09-19T00:30:00+02:00",
+            "end": "2026-09-19T00:45:00+02:00",
+            "spot": 0.30,
+            "import": 1.00,
+            "export": 0.33,
+        },
+        {
+            "start": "2026-09-19T00:45:00+02:00",
+            "end": "2026-09-19T01:00:00+02:00",
+            "spot": 0.40,
+            "import": 1.10,
+            "export": 0.43,
+        },
+        {
+            "start": "2026-09-19T01:00:00+02:00",
+            "end": "2026-09-19T01:15:00+02:00",
+            "spot": 0.50,
+            "import": 1.20,
+            "export": 0.53,
+        },
+        {
+            "start": "2026-09-19T01:15:00+02:00",
+            "end": "2026-09-19T01:30:00+02:00",
+            "spot": 0.60,
+            "import": 1.30,
+            "export": 0.63,
+        },
+    ]
+
+    price_history = [
+        {
+            "timestamp": datetime.fromisoformat("2026-09-19T00:45:00+02:00"),
+            "attributes": {"all_prices": schedule},
+        },
+        # Deliberately no Recorder state at 01:00.
+        {
+            "timestamp": datetime.fromisoformat("2026-09-19T01:15:00+02:00"),
+            "attributes": {"all_prices": schedule},
+        },
+    ]
+
+    result = module.extract_spot_price_history(price_history)
+
+    assert len(result) == len(schedule)
+
+    assert [item["start"].isoformat() for item in result] == [
+        item["start"] for item in schedule
+    ]
+
+    assert [item["spot"] for item in result] == [
+        0.10,
+        0.20,
+        0.30,
+        0.40,
+        0.50,
+        0.60,
+    ]
+
+    assert all(
+        item["recorded_at"]
+        == datetime.fromisoformat("2026-09-19T01:15:00+02:00")
+        for item in result
+    )

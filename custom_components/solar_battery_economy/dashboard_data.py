@@ -60,34 +60,39 @@ def _coerce_datetime(value: Any) -> datetime | None:
 def extract_spot_price_history(
     price_history: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Extract actual spot price for the interval containing each price state.
+    """Reconstruct spot-price intervals from recorded all_prices schedules.
 
-    The price sensor stores the structured ``all_prices`` schedule as an
-    attribute. Historical states therefore let the dashboard reconstruct the
-    recorded spot-price timeline without creating another price sensor.
+    Each recorded price state contains the structured ``all_prices`` schedule
+    as an attribute. Reconstruct the interval series from those schedules
+    instead of selecting only the interval containing the Recorder state's
+    timestamp.
     """
     result: list[dict[str, Any]] = []
+
     for state in price_history:
         timestamp = state.get("timestamp")
         attributes = state.get("attributes") or {}
         all_prices = attributes.get("all_prices")
+
         if not isinstance(timestamp, datetime) or not isinstance(all_prices, list):
             continue
 
         for interval in all_prices:
             if not isinstance(interval, dict):
                 continue
+
             start = _coerce_datetime(interval.get("start"))
             end = _coerce_datetime(interval.get("end"))
             spot = interval.get("spot")
+
             if start is None or end is None:
                 continue
-            if not start <= timestamp < end:
-                continue
+
             try:
                 spot_value = float(spot)
             except (TypeError, ValueError):
                 continue
+
             result.append(
                 {
                     "start": start,
@@ -96,11 +101,11 @@ def extract_spot_price_history(
                     "recorded_at": timestamp,
                 }
             )
-            break
 
-    # The template updates every 15 minutes, so duplicate interval snapshots
-    # are possible. Keep the latest recorded state for each interval.
+    # Multiple Recorder states can contain the same all_prices schedule.
+    # Keep the latest recorded snapshot for each price interval.
     deduped: dict[datetime, dict[str, Any]] = {}
+
     for item in result:
         existing = deduped.get(item["start"])
         if existing is None or item["recorded_at"] > existing["recorded_at"]:
