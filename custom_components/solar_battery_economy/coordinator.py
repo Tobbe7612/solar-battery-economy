@@ -27,6 +27,7 @@ from .economy_calculations import calculate_savings, battery_solar_share
 from .price_source import find_cheapest_future_period
 from .price_source import calculate_today_spot_statistics
 from .price_source import normalize_price_source
+from .analytics import build_statistics_energy_samples_with_price_history
 from .dashboard_data import (
     build_consumer_dashboard_data,
     build_energy_samples_from_statistics,

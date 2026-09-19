@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 MODULE_PATH = (
@@ -6,6 +7,8 @@ MODULE_PATH = (
     / "solar_battery_economy"
     / "websocket.py"
 )
+
+COORDINATOR_PATH = MODULE_PATH.parent / "coordinator.py"
 
 
 def test_dashboard_websocket_command_is_registered_and_bounded():
@@ -24,3 +27,19 @@ def test_integration_registers_websocket_commands_in_global_setup():
 
     assert "async def async_setup(hass: HomeAssistant, config: dict) -> bool:" in source
     assert "async_register_websocket_commands(hass)" in source
+
+
+def test_coordinator_imports_dashboard_energy_sample_builder():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    imported_names = {
+        alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "analytics"
+        and node.level == 1
+        for alias in node.names
+    }
+
+    assert "build_statistics_energy_samples_with_price_history" in imported_names
