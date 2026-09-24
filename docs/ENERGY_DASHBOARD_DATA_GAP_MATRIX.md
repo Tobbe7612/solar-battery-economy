@@ -2,7 +2,8 @@
 
 **Project:** Solar Battery Economy  
 **Baseline:** SBE 1.4.0  
-**Checkpoint:** 2026-09-13
+**Checkpoint:** 2026-09-20
+**Definition status:** V1 dashboard semantics frozen
 
 ## Status legend
 
@@ -22,29 +23,29 @@
 | PQI | SBE price intelligence | GREEN | `price_quality_index` exists | Present only |
 | Cheapest future period | SBE price intelligence | GREEN | Structured result exists | Present only |
 | Future 15-min prices | normalized forecast | GREEN | Structured intervals exist | No entity explosion |
-| Lowest/highest/average today | price intervals | YELLOW | Raw intervals exist | Freeze population + rounding |
-| 24h house consumption | SBE + Recorder | YELLOW | Cumulative `house_total` exists | Use Recorder for 24h delta/series |
-| 24h house cost | SBE economy | YELLOW | Cumulative import-related money exists | Freeze exact 24h aggregation |
-| Cheap-use % | Recorder + price intervals | RED | No canonical metric | Define + test |
-| Expensive-use % | Recorder + price intervals | RED | No canonical metric | Define + test |
-| Smart Score | SBE | RED | No canonical metric | Define inputs/weights/normalization |
-| Highest-cost period | Recorder + price | RED | No canonical metric | Define deterministic algorithm |
-| Lowest-cost period | Recorder + price | RED | Not defined as dashboard metric | Define separately from price low |
-| Consumer energy history | configured HA entities + Recorder | YELLOW | Consumer configuration exists in card ecosystem | Define generic historical contract |
-| Consumer cost | consumer history + import price | RED | No generic canonical layer | Define + test using total import price |
-| Consumer average price | consumer history + import price | RED | No canonical metric | Weighted average definition |
-| Consumer cheap-use % | consumer history + price | RED | No canonical metric | Define + test |
-| Consumer expensive-use % | consumer history + price | RED | No canonical metric | Define + test |
-| Consumer event intervals | Recorder/history | RED | No generic event model | Define before UI |
-| Battery contribution | SBE energy/economy | GREEN/YELLOW | Existing battery energy/savings foundation | Verify exact dashboard metric |
-| Battery charge/discharge history | SBE + Recorder | YELLOW | Directional energy exists | Define 24h presentation aggregation |
+| Lowest/highest/average today | price intervals | GREEN | Deterministic current-day spot statistics are defined and tested | Present only |
+| 24h house consumption | SBE + Recorder | GREEN | Rolling 24h uses canonical `house_total` and Recorder/statistics | Preserve/test |
+| 24h house cost | Recorder + normalized import price | GREEN | Rolling 24h house-total energy × total import price is implemented and tested | Present only |
+| Cheap-use % | Recorder + normalized import price | GREEN | Shared previous-24h median reference and energy-weighted calculation are implemented and tested | Present only |
+| Expensive-use % | Recorder + normalized import price | GREEN | Shared previous-24h median reference and energy-weighted calculation are implemented and tested | Present only |
+| Smart Score | SBE | GREEN | Deterministic 0–100 score is implemented and tested with the frozen V1 weights | Present only |
+| Highest-cost period | Recorder + normalized import price | GREEN | 15-min maximum valid house period cost with deterministic tie handling is implemented and tested | Present only |
+| Lowest-cost period | Recorder + normalized import price | GREEN | 15-min minimum valid cost with energy > 0 and earliest-tie handling is implemented and tested | Present only |
+| Consumer energy history | configured HA entities + Recorder | GREEN | Generic configured consumer history is available; source entity remains authoritative | Preserve/test |
+| Consumer cost | consumer history + normalized import price | GREEN | Energy × total import price is implemented and covered by tests | Present only |
+| Consumer average price | consumer history + normalized import price | YELLOW | Energy-weighted total import price; zero energy excluded | Preserve/test |
+| Consumer cheap-use % | consumer history + normalized import price | YELLOW | Shared median reference; energy-weighted | Preserve/test |
+| Consumer expensive-use % | consumer history + normalized import price | YELLOW | Shared median reference; energy-weighted | Preserve/test |
+| Consumer event intervals | Recorder/history | GREEN | Generic events are extracted from actual historical energy intervals without invented timing | Present only |
+| Battery contribution | SBE + Recorder | GREEN | Rolling 24h battery-house energy / house-total energy is implemented and tested | Present only |
+| Battery charge/discharge history | SBE + Recorder | YELLOW | Directional energy exists; presentation aggregation still to verify | Implement/verify |
 | Actual grid cost | SBE savings/economy | GREEN | `actual_grid_cost` exists | Preserve import-price basis |
 | Export income | SBE savings/economy | GREEN | `export_income` exists | Keep separate from cost |
 | Total savings | SBE savings/economy | GREEN | `savings.total` exists | Verify dashboard wording |
 | Grid independence | SBE sensor | GREEN | Existing sensor | Present only |
 | Solar self-consumption | SBE sensor | GREEN | Existing sensor | Present only |
 | CO2 saved | SBE sensor | GREEN | Existing sensor | Present only |
-| Historical timeline | HA Recorder | YELLOW | Recorder is source | Dashboard renders; no business logic |
+| Historical timeline | HA Recorder | GREEN | Recorder owns historical storage; dashboard consumes prepared history | Preserve boundary |
 | Future timeline | SBE price model | GREEN | Known intervals exist | Render only known data |
 
 ## Important code finding
@@ -85,24 +86,21 @@ This is compatible with the locked dashboard rule:
 
 > **Every dashboard cost uses total import price, never spot.**
 
-## RED items
+## Remaining implementation gaps
 
-1. Smart Score.
-2. Cheap-use percentage.
-3. Expensive-use percentage.
-4. Deterministic cost-period insights.
-5. Generic consumer analysis.
-6. Generic consumer cost.
-7. Generic consumer event model.
+### RED — canonical capability still missing
 
-## YELLOW items
+None of the frozen V1 analytical requirements remain RED.
 
-1. Today price-statistics population.
-2. 24h cost aggregation.
-3. 24h consumer cost aggregation.
-4. Battery dashboard metric definitions.
-5. Recorder aggregation semantics.
-6. Current status wording.
+### YELLOW — definition or presentation verification remains
+
+1. Current status wording remains a presentation-level interpretation to be finalized by the dashboard UI.
+2. Battery charge/discharge presentation aggregation remains a dashboard presentation concern.
+
+### Resolved definitions
+
+Cheap/expensive usage, consumer average price, consumer share, Consumer Price
+Alignment, today's spot statistics and Smart Score semantics are now defined.
 
 ## Architectural boundary
 

@@ -1,7 +1,7 @@
 # Energy Dashboard Data Specification
 
 **Project:** Solar Battery Economy ecosystem\
-**Document status:** FAS 3.1 --- WORKING SPECIFICATION\
+**Document status:** FAS 3.1 --- IMPLEMENTATION-ALIGNED V1 SPECIFICATION\
 **Version:** 1.0\
 **Purpose:** Define exactly what the new Energy Dashboard needs before
 UI implementation begins.
@@ -135,29 +135,21 @@ average spot price
 
 ### Status
 
-YELLOW.
+DEFINITION FROZEN.
 
-The raw intervals exist, but the exact statistical population must be
-frozen.
+The population is the current calendar day from `00:00` through the
+current moment. Only intervals that have actually elapsed are included.
+Future intervals for the remainder of today are excluded.
 
-Questions to resolve:
+The statistic basis is **spot price**, not total import price.
 
--   Does "today" mean midnight → current moment?
--   Does it include remaining known intervals today?
--   Does the average include future today intervals?
--   Are low/high times based on a single 15-minute interval or an
-    aggregated continuous period?
--   Are values displayed in öre/kWh with a fixed rounding rule?
+-   lowest = minimum spot value in the population;
+-   highest = maximum spot value in the population;
+-   average = arithmetic mean of the included spot values;
+-   low/high period resolution = normalized 15-minute interval.
 
-Recommended default for the mockup:
-
-``` text
-current calendar day
-known intervals only
-spot price
-```
-
-This recommendation requires approval before implementation.
+Business calculations retain full precision. Presentation rounding belongs
+to the dashboard and must not alter the underlying calculation.
 
 ------------------------------------------------------------------------
 
@@ -173,31 +165,52 @@ Excellent
 
 ### Status
 
-RED.
+DEFINITION FROZEN — implementation remains to be added and tested.
 
-Smart Score must be defined separately from PQI.
+Smart Score is distinct from PQI. It evaluates household energy/economic
+usage behavior over the dashboard's rolling 24-hour analysis window.
 
-Required before implementation:
+### V1 inputs and weights
 
 ``` text
-inputs
-weights
-normalization
-score range
-classification
-edge cases
-tests
+40%  cheap usage
+40%  inverse expensive usage
+20%  battery contribution
 ```
 
-Possible conceptual inputs may include:
+Formula:
 
--   cheap-use percentage;
--   expensive-use percentage;
--   consumer price alignment;
--   energy-use efficiency indicators;
--   battery contribution.
+``` text
+score =
+    0.40 * cheap_usage_percent
+  + 0.40 * (100 - expensive_usage_percent)
+  + 0.20 * battery_contribution_percent
+```
 
-These are candidates only until the algorithm is approved.
+The result is constrained to the range `0..100`.
+
+Consumer Price Alignment is explicitly **not** part of Smart Score V1.
+
+### V1 score classes
+
+``` text
+90–100  Excellent
+75–89   Good
+60–74   Fair
+40–59   Poor
+0–39    Very Poor
+```
+
+### Edge cases
+
+-   no house energy → Smart Score unavailable;
+-   no battery data → Smart Score unavailable;
+-   no valid price data → Smart Score unavailable;
+-   valid battery data with zero battery contribution → 0% contribution;
+-   missing price data is never treated as zero.
+
+The calculation must be deterministic, unit-tested and implemented in SBE.
+No card may invent or recalculate the Smart Score.
 
 ------------------------------------------------------------------------
 
@@ -552,50 +565,161 @@ explicitly waived:
 
 ------------------------------------------------------------------------
 
-# 18. Definition Decisions Before Coding
+# 18. Definition Decisions — Frozen
 
-The following decisions must be explicitly frozen:
+The following decisions are now frozen for FAS 3 V1.
 
-### Price statistics
+## 18.1 Cost and price basis
 
--   population;
--   spot vs import;
--   today boundary;
--   average formula;
--   low/high period selection.
+-   All Energy Dashboard cost calculations use **total import price**.
+-   Spot price is used for market-price visualization/statistics.
+-   Export price represents export revenue and is kept separate from cost.
+-   The Nord Pool template is unchanged.
 
-### House cost
+## 18.2 Historical and future windows
 
--   exact imported-energy calculation;
--   handling of unavailable price;
--   rounding.
+-   Primary dashboard history is a rolling `now - 24h` → `now` window.
+-   Future price data is limited to currently available data for today and
+    tomorrow.
+-   No interpolation, extrapolation, guessed values or stale future values
+    are permitted.
 
-### Consumer cost
+## 18.3 House and consumer cost
 
--   same total-import-price rule;
--   exact historical aggregation.
+For each valid normalized price interval:
 
-### Cheap/expensive usage
+``` text
+cost = energy_kwh × total_import_price
+```
 
--   reference population;
--   threshold/classification;
--   treatment of equal-to-reference values.
+House and consumer calculations use the same price rule. Consumer energy
+comes from the configured HA energy entity and remains authoritative.
+Different Recorder/statistics sampling resolutions must be handled without
+assuming that every source produces exactly 15-minute samples.
 
-### Smart Score
+## 18.4 Weighted average import price
 
--   formula;
--   components;
--   weights;
--   score classes.
+``` text
+average_import_price =
+    sum(energy_kwh × import_price) / sum(energy_kwh)
+```
 
-### Insights
+Zero-energy intervals do not contribute to the denominator. Energy paired
+with missing price data is excluded from price-dependent averages.
 
--   exact insight types;
--   trigger conditions;
--   output structure;
--   ranking.
+## 18.5 Cheap and expensive usage
 
-------------------------------------------------------------------------
+The shared reference is the **median total import price over the previous
+24 hours**.
+
+``` text
+price < median  → cheap
+price = median  → neutral
+price > median  → expensive
+```
+
+Percentages are energy-weighted. The denominator contains only energy with
+valid price data. Cheap and expensive percentages therefore do not have to
+sum to 100% because median-equal intervals are neutral.
+
+The same definition applies to house and configured consumers.
+
+## 18.6 Cost periods
+
+Cost-period resolution is 15 minutes and is aligned to normalized price
+intervals.
+
+``` text
+period_cost = house_energy_kwh × total_import_price
+```
+
+-   highest-cost period = maximum valid period cost;
+-   lowest-cost period = minimum valid period cost among periods with
+    energy > 0;
+-   zero-energy periods are excluded from the lowest-cost selection;
+-   ties are resolved by selecting the earliest interval.
+
+These are cost metrics, not highest/lowest price metrics.
+
+## 18.7 Battery contribution
+
+For the same rolling 24-hour dashboard window:
+
+``` text
+battery_contribution_percent =
+    battery_house_energy / house_total_energy × 100
+```
+
+If house consumption is zero, the metric is unavailable. The metric is an
+energy contribution, not battery savings, avoided value, charge energy or
+discharge energy.
+
+## 18.8 Consumer Price Alignment
+
+``` text
+alignment_delta =
+    house_average_import_price - consumer_average_import_price
+```
+
+Unit: SEK/kWh.
+
+-   positive = consumer used electricity at a lower average import price
+    than the house average;
+-   zero = equal;
+-   negative = consumer used electricity at a higher average import price.
+
+This is a transparent delta, not a score, and is excluded from Smart Score
+V1.
+
+## 18.9 Missing historical price data
+
+Missing or invalid price data is never converted to zero and never
+interpolated or guessed. Price-dependent calculations exclude the affected
+energy from their valid denominator. The implementation must expose enough
+coverage information internally to distinguish complete from incomplete
+price-dependent analysis.
+
+## 18.10 Deterministic insight model
+
+Initial V1 insight types are:
+
+``` text
+cheap_consumption
+expensive_consumption
+highest_cost_period
+lowest_cost_period
+consumer_cost
+consumer_share
+consumer_price_alignment
+```
+
+Insights are deterministic facts derived from canonical metrics. They must
+not contain autonomous recommendations or inferred intent.
+
+The cost-period insights use the exact period definitions above. Consumer
+share is:
+
+``` text
+consumer_energy_24h / house_energy_24h × 100
+```
+
+It is an energy share, not a cost share.
+
+## 18.11 Consumer events
+
+Consumer events must be derived from actual Recorder/history data. A generic
+event may contain `consumer_id`, `start`, `end`, `energy` and optional
+`average_power`/`max_power`.
+
+Cumulative energy alone does not establish exact event timing. Event timing
+may only be exposed when the source resolution supports it.
+
+## 18.12 Rounding
+
+Business calculations are performed without presentation rounding. Display
+rounding is a dashboard responsibility. Serialized analytical values may use
+the implementation's documented numeric precision, but rounding must not
+change classification, weighting, selection or score calculations.
 
 # 19. V1 Boundaries
 
@@ -639,13 +763,18 @@ Architecture               APPROVED
 Cost semantics             LOCKED
 History horizon            LOCKED — max 24h
 Future price horizon       LOCKED — today + tomorrow
+Smart Score                IMPLEMENTED / TESTED / FROZEN
+Consumer analysis          DEFINED / FROZEN
+Cost-period semantics      DEFINED / FROZEN
+Insight categories         DEFINED / FROZEN
 Nord Pool template         LOCKED / UNCHANGED
 
 Next:
-Definition Decisions
-→ Data Gap Matrix finalization
-→ SBE implementation scope
-→ tests
+Implementation-aligned documentation and dashboard UI design
+→ implementation scope review
+→ tests for frozen definitions
 → SBE implementation
+→ persistence/regression verification
+→ documentation verification
 → dashboard UI design
 ```

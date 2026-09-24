@@ -1,7 +1,7 @@
 # FAS 3 --- SBE Implementation & Migration Plan
 
 **Project:** Solar Battery Economy\
-**Status:** PLANNING --- no implementation changes made by this
+**Status:** IMPLEMENTATION CHECKPOINT --- V1 analytical data foundation implemented and tested
 document\
 **Source of Truth:** `docs/ENERGY_DATA_CONTRACT.md`\
 **Current code baseline:** SBE 1.4.0
@@ -157,23 +157,36 @@ Dashboard component
 
 ------------------------------------------------------------------------
 
-## 6. Required Definition Decisions
+## 6. Definition Decisions — FROZEN
 
-Before implementation, finalize:
+The required V1 dashboard semantics have now been explicitly defined.
 
-1.  Current price display semantics.
-2.  Lowest/highest/average price population.
-3.  House cost definition.
-4.  Consumer cost definition.
-5.  Cheap-use definition.
-6.  Expensive-use definition.
-7.  Costliest consumption period definition.
-8.  Smart Score algorithm.
-9.  Insight definitions.
-10. Exact consumer analysis windows.
-11. Rounding conventions.
-12. Handling of unavailable historical data.
-13. Handling of unavailable tomorrow prices.
+1.  Current prominent price = spot; dashboard costs = total import price.
+2.  Today's low/high/average = spot, current calendar day `00:00` → now,
+    elapsed intervals only.
+3.  House and consumer cost = energy × total import price over rolling 24h.
+4.  Cheap/expensive reference = median total import price over previous 24h;
+    equality is neutral.
+5.  Cost-period resolution = normalized 15 minutes; highest/lowest are
+    actual house period cost, not price; earliest interval wins ties.
+6.  Consumer average price and house average import price are energy-weighted.
+7.  Consumer share = consumer 24h energy / house 24h energy.
+8.  Battery contribution = battery-house energy / house-total energy over
+    the same 24h window.
+9.  Consumer Price Alignment = house average import price minus consumer
+    average import price; it is not part of Smart Score V1.
+10. Smart Score = 40% cheap usage + 40% inverse expensive usage + 20%
+    battery contribution, on a 0–100 scale.
+11. Smart Score classes: 90–100 Excellent, 75–89 Good, 60–74 Fair,
+    40–59 Poor, 0–39 Very Poor.
+12. Missing price data is never treated as zero, interpolated or guessed.
+13. Dashboard history is max 24h; future data is limited to available today
+    + tomorrow prices.
+14. Consumer events must come from actual Recorder/history resolution; timing
+    is never invented.
+15. Business calculations are not presentation-rounded; display formatting
+    belongs to the dashboard.
+
 
 ------------------------------------------------------------------------
 
@@ -414,31 +427,42 @@ A formal test matrix is required.
 
 # FAS 3.9 --- Smart Score
 
-Define and test Smart Score before implementation.
-
-Smart Score is distinct from PQI.
-
-PQI:
+Smart Score is now defined and approved for V1. It is distinct from PQI.
 
 ``` text
-price quality
+score =
+    0.40 * cheap_usage_percent
+  + 0.40 * (100 - expensive_usage_percent)
+  + 0.20 * battery_contribution_percent
 ```
 
-Smart Score:
+Range: `0..100`.
+
+Classes:
 
 ``` text
-broader household energy/economic behavior
+90–100  Excellent
+75–89   Good
+60–74   Fair
+40–59   Poor
+0–39    Very Poor
 ```
 
-The algorithm must be deterministic and documented.
+Consumer Price Alignment is excluded from Smart Score V1.
 
-No card-specific Smart Score formula is allowed.
+Edge cases:
 
-------------------------------------------------------------------------
+- no house energy → unavailable;
+- no battery data → unavailable;
+- no valid price data → unavailable;
+- valid battery data with zero contribution → 0% contribution;
+- missing price data is never converted to zero.
+
+The implementation must be deterministic and unit-tested.
 
 # FAS 3.10 --- Deterministic Insights
 
-Initial V1 insight candidates:
+Initial V1 insight types are frozen as:
 
 ``` text
 cheap_consumption
@@ -450,11 +474,16 @@ consumer_share
 consumer_price_alignment
 ```
 
-Insights should be deterministic and testable.
+Insights are deterministic facts derived from canonical metrics. They do not
+contain autonomous recommendations or inferred user intent.
 
-AI-based autonomous control is not part of V1.
+Cost-period insights use 15-minute normalized price intervals, actual house
+energy and total import price. Consumer share is an energy share, not a cost
+share. Consumer Price Alignment is a transparent SEK/kWh delta and not a
+score.
 
-------------------------------------------------------------------------
+The dashboard presents the resulting structured insight data and does not
+recalculate business metrics.
 
 # 10. Existing Known Issue
 
@@ -689,9 +718,8 @@ FAS 1 — Data Gap Analysis           COMPLETE / APPROVED
 FAS 2A — Architecture Decisions     COMPLETE / FROZEN
 FAS 2B — Energy Data Contract       UPDATED / FROZEN
 
-FAS 3.1 — Dashboard Specification   IN PROGRESS
-FAS 3   — Implementation            NOT STARTED
+FAS 3.1 — Dashboard Specification   DEFINITION FROZEN
+FAS 3   — Implementation            IN PROGRESS
 ```
 
-**Next approved step:** finalize the Data Gap Matrix and Definition
-Decisions.
+**Next approved step:** reconcile documentation with the implementation-aligned V1 contract, then proceed to Energy Dashboard UI/data-client work. No canonical V1 analytical gap remains RED.

@@ -667,34 +667,98 @@ Insight definitions must be specified before implementation.
 
 ## 21. Smart Score
 
-The mockup contains a Smart Score on a 0--100 scale.
-
-Smart Score is NOT synonymous with Price Quality Index.
-
-PQI answers:
+The Energy Dashboard Smart Score is a deterministic 0--100 household
+energy/economic behavior metric over the rolling 24-hour analysis window.
+It is distinct from Price Quality Index (PQI).
 
 ``` text
-How favorable is the current/future electricity price?
+score =
+    0.40 * cheap_usage_percent
+  + 0.40 * (100 - expensive_usage_percent)
+  + 0.20 * battery_contribution_percent
 ```
 
-Smart Score is intended to answer a broader question about the quality
-of the household's energy usage/economic behavior.
+V1 weights:
 
-The exact Smart Score algorithm is NOT yet frozen.
+-   40% cheap usage;
+-   40% inverse expensive usage;
+-   20% battery contribution.
 
-Before implementation it must be:
+Consumer Price Alignment is not included in V1.
 
-1.  defined;
-2.  mathematically specified;
-3.  tested;
-4.  documented;
-5.  versioned as part of the stable contract.
+Score classes:
 
-No card may invent its own Smart Score calculation.
+``` text
+90–100  Excellent
+75–89   Good
+60–74   Fair
+40–59   Poor
+0–39    Very Poor
+```
+
+Edge cases:
+
+-   no house energy → unavailable;
+-   no battery data → unavailable;
+-   no valid price data → unavailable;
+-   valid battery data with zero contribution → 0% contribution;
+-   missing price data is never treated as zero.
+
+The implementation must be deterministic, tested and versioned as part of
+the stable contract. No card may invent or recalculate Smart Score.
 
 ------------------------------------------------------------------------
 
-## 22. Card Responsibilities
+## 22. Dashboard Analytical Contract
+
+The following analytical definitions are stable V1 contract semantics.
+
+### 22.1 Cheap/expensive usage
+
+Reference: median total import price over the previous 24 hours.
+
+``` text
+price < median  → cheap
+price = median  → neutral
+price > median  → expensive
+```
+
+Percentages are energy-weighted over energy with valid price data.
+
+### 22.2 Cost periods
+
+Cost period resolution is 15 minutes.
+
+``` text
+period_cost = house_energy_kwh × total_import_price
+```
+
+Highest cost selects the maximum valid period. Lowest cost selects the
+minimum valid period with energy > 0. Ties select the earliest interval.
+
+### 22.3 Battery contribution
+
+``` text
+battery_house_energy / house_total_energy × 100
+```
+
+The metric is undefined when house energy is zero.
+
+### 22.4 Consumer Price Alignment
+
+``` text
+house_average_import_price - consumer_average_import_price
+```
+
+Positive means the consumer's average import price was lower than the house
+average. This is a SEK/kWh delta, not a score.
+
+### 22.5 Consumer events
+
+Events are derived only from actual Recorder/history data. Cumulative energy
+alone cannot establish exact event timing.
+
+## 23. Card Responsibilities
 
 ### Solar Battery Economy
 
@@ -835,16 +899,15 @@ together with the corresponding implementation.
 
 ------------------------------------------------------------------------
 
-## 28. Current Status
+## 28. Implementation Status
 
 ``` text
 FAS 0 — Project Definition          COMPLETE / FROZEN
 FAS 1 — Data Gap Analysis           COMPLETE / APPROVED
 FAS 2A — Architecture Decisions     COMPLETE / FROZEN
 FAS 2B — Energy Data Contract       UPDATED / FROZEN
-FAS 3 — SBE Implementation          NOT YET STARTED
-FAS 3.1 — Dashboard Data Spec       IN PROGRESS
+FAS 3 — SBE Implementation          ANALYTICAL V1 IMPLEMENTED / TESTED
+FAS 3.1 — Dashboard Data Spec       IMPLEMENTATION-ALIGNED / FROZEN
 ```
 
-**Next approved step:** finalize the Energy Dashboard Data Specification
-and Data Gap Matrix before production-code changes.
+**Next approved step:** use the implementation-aligned contract as the data boundary for the Energy Dashboard UI. Remaining presentation decisions must not introduce competing business logic.

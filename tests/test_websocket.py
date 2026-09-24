@@ -43,3 +43,27 @@ def test_coordinator_imports_dashboard_energy_sample_builder():
     }
 
     assert "build_statistics_energy_samples_with_price_history" in imported_names
+
+
+def test_coordinator_dashboard_uses_shared_price_reference_and_battery_house():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "build_house_analysis"
+    ]
+    assert len(calls) == 1
+    keywords = {keyword.arg for keyword in calls[0].keywords}
+    assert {"reference_price", "battery_house_samples"}.issubset(keywords)
+
+    assert 'self._get_energy_entity_id("battery_house")' in source
+    assert 'calculate_shared_import_price_median(price_states)' in source
+
+
+def test_dashboard_payload_includes_deterministic_insights_builder():
+    source = Path("custom_components/solar_battery_economy/coordinator.py").read_text(encoding="utf-8")
+    assert "build_deterministic_insights(house, consumers)" in source
