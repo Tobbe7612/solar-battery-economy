@@ -48,22 +48,23 @@ The dashboard now labels the main cost metric:
 
 This reinforces the locked project rule:
 
+- the dashboard uses total import price everywhere as its displayed electricity price
 - all dashboard costs use total import price
-- spot is used for market-price visualization
+- raw spot remains available in SBE but is not used as the dashboard price basis
 - export remains separate revenue
 
-This is one of the most important changes because it prevents visual ambiguity between spot price and actual household purchase cost.
+This is one of the most important changes because the dashboard now uses the household purchase price directly and no longer presents raw spot as its primary electricity price.
 
 ### D. Timeline is explicitly historical + forecast
 
 The main graph is now titled:
 
-**Spotpris & husförbrukning — senaste 24h och nästa 24h**
+**Importpris & husförbrukning — senaste 24h och nästa 24h**
 
 The visual distinction is:
 
-- solid price line = historical spot price
-- dashed price line = known future spot-price forecast
+- solid price line = historical total import price
+- dashed price line = known future total import-price forecast
 - bars = house consumption
 - `NU` = current-time boundary
 

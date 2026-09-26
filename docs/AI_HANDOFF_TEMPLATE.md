@@ -25,8 +25,9 @@ Solar Battery Economy
 
 ## Locked rules
 
-1. **All Energy Dashboard costs use total import price.**
-2. Spot price is for market-price visualization, not cost calculations.
+1. **Energy Dashboard uses total import price everywhere as its displayed electricity price.**
+2. **All Energy Dashboard costs use total import price.**
+3. Raw spot remains available in the normalized source model but is not used as the dashboard price basis.
 3. Export is export revenue and remains separate from import cost.
 4. The existing Nord Pool template is immutable and must not be changed.
 5. Historical dashboard analysis is limited to **maximum 24 hours backwards**.
@@ -54,9 +55,9 @@ Solar Battery Economy
 ## Current price model
 
 ```text
-spot   = market price / visual price curve
-import = total household purchase price
-export = household export revenue price
+import = primary Energy Dashboard price + total household purchase price
+export = household export revenue
+spot   = raw market price retained in the normalized source model; not used as the dashboard price basis price
 ```
 
 The dashboard must retain this distinction everywhere.
@@ -160,7 +161,7 @@ docs/V1.4.0_CODE_AUDIT.md
 ## Do not do
 
 - Do not modify the Nord Pool template.
-- Do not replace total import price with spot in any cost metric.
+- Do not replace total import price with spot anywhere in the Energy Dashboard.
 - Do not add 96 forecast entities.
 - Do not put business calculations into Lovelace cards.
 - Do not implement Smart Score without a frozen definition.

@@ -286,16 +286,59 @@ def test_deterministic_insights_are_descriptive_and_stable():
     consumers = {
         "sensor.ev": {
             "name": "Elbil",
-            "analysis": {"energy_kwh": 3.0, "cost": 2.5, "average_import_price": 0.8333},
+            "analysis": {
+                "energy_kwh": 3.0,
+                "cost": 2.5,
+                "average_import_price": 0.8333,
+                "share_percent": 25.0,
+                "price_alignment_delta": 0.1667,
+            },
         }
     }
     result = analytics.build_deterministic_insights(house, consumers)
     assert [item["type"] for item in result] == [
         "cheap_consumption", "expensive_consumption",
         "highest_cost_period", "lowest_cost_period", "consumer_cost",
+        "consumer_share", "consumer_price_alignment",
     ]
     assert result[-1]["consumer_id"] == "sensor.ev"
-    assert result[-1]["cost"] == 2.5
+    assert result[4] == {
+        "type": "consumer_cost",
+        "consumer_id": "sensor.ev",
+        "name": "Elbil",
+        "energy_kwh": 3.0,
+        "cost": 2.5,
+        "average_import_price": 0.8333,
+    }
+    assert result[5] == {
+        "type": "consumer_share",
+        "consumer_id": "sensor.ev",
+        "name": "Elbil",
+        "share_percent": 25.0,
+    }
+    assert result[6] == {
+        "type": "consumer_price_alignment",
+        "consumer_id": "sensor.ev",
+        "name": "Elbil",
+        "price_alignment_delta": 0.1667,
+    }
+
+
+def test_deterministic_insights_skip_unavailable_consumer_facts():
+    consumers = {
+        "sensor.ev": {
+            "name": "Elbil",
+            "analysis": {
+                "cost": 2.5,
+                "share_percent": None,
+                "price_alignment_delta": None,
+            },
+        }
+    }
+
+    result = analytics.build_deterministic_insights({}, consumers)
+
+    assert [item["type"] for item in result] == ["consumer_cost"]
 
 
 def test_deterministic_insights_do_not_create_missing_facts():

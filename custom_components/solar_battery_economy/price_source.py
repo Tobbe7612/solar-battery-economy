@@ -265,16 +265,16 @@ def find_cheapest_future_period(
     }
 
 
-def calculate_today_spot_statistics(
+def calculate_today_import_price_statistics(
     forecast: list[dict[str, Any]],
     *,
     now: datetime,
 ) -> dict[str, Any] | None:
-    """Calculate today's spot-price statistics from midnight through now.
+    """Calculate today's total-import-price statistics from midnight through now.
 
     Only intervals belonging to the current calendar day and already started
     before ``now`` are included. The current 15-minute interval is included
-    because its known spot price is already available.
+    because its known total import price is already available.
     """
     local_now = now
     day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -282,7 +282,7 @@ def calculate_today_spot_statistics(
     intervals = [
         interval
         for interval in forecast
-        if interval.get("spot") is not None
+        if interval.get("import") is not None
         and interval.get("start") is not None
         and day_start <= interval["start"] <= local_now
     ]
@@ -290,15 +290,15 @@ def calculate_today_spot_statistics(
     if not intervals:
         return None
 
-    values = [float(interval["spot"]) for interval in intervals]
+    values = [float(interval["import"]) for interval in intervals]
     minimum = min(values)
     maximum = max(values)
     average = sum(values) / len(values)
 
     return {
-        "lowest_spot_price": round(minimum, 4),
-        "highest_spot_price": round(maximum, 4),
-        "average_spot_price": round(average, 4),
+        "lowest_import_price": round(minimum, 4),
+        "highest_import_price": round(maximum, 4),
+        "average_import_price": round(average, 4),
         "interval_count": len(intervals),
     }
 

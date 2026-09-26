@@ -29,7 +29,7 @@ spec.loader.exec_module(module)
 
 
 def test_extract_spot_price_history_accepts_iso_attribute_timestamps():
-    recorded = datetime(2026, 9, 19, 10, 2, tzinfo=timezone.utc)
+    recorded = datetime(2026, 9, 19, 10, 16, tzinfo=timezone.utc)
     history = [
         {
             "timestamp": recorded,
@@ -54,8 +54,8 @@ def test_extract_spot_price_history_accepts_iso_attribute_timestamps():
 
 
 def test_extract_spot_price_history_keeps_latest_snapshot_per_interval():
-    first = datetime(2026, 9, 19, 10, 1, tzinfo=timezone.utc)
-    second = datetime(2026, 9, 19, 10, 14, tzinfo=timezone.utc)
+    first = datetime(2026, 9, 19, 10, 16, tzinfo=timezone.utc)
+    second = datetime(2026, 9, 19, 10, 19, tzinfo=timezone.utc)
     interval = {
         "start": "2026-09-19T10:00:00+00:00",
         "end": "2026-09-19T10:15:00+00:00",
@@ -90,88 +90,103 @@ def test_build_energy_samples_from_statistics_ignores_invalid_change():
         {"start": start, "end": end, "energy_kwh": 0.25},
     ]
 
-def test_extract_spot_price_history_reconstructs_intervals_from_all_prices():
-    """Spot history should use the recorded all_prices schedule, not state timestamps."""
+def test_extract_spot_price_history_reconstructs_completed_intervals_from_snapshots():
+    """Use completed intervals from the sensor's published all_prices schedule."""
     schedule = [
         {
             "start": "2026-09-19T00:00:00+02:00",
             "end": "2026-09-19T00:15:00+02:00",
             "spot": 0.10,
-            "import": 0.80,
-            "export": 0.13,
         },
         {
             "start": "2026-09-19T00:15:00+02:00",
             "end": "2026-09-19T00:30:00+02:00",
             "spot": 0.20,
-            "import": 0.90,
-            "export": 0.23,
         },
         {
             "start": "2026-09-19T00:30:00+02:00",
             "end": "2026-09-19T00:45:00+02:00",
             "spot": 0.30,
-            "import": 1.00,
-            "export": 0.33,
         },
         {
             "start": "2026-09-19T00:45:00+02:00",
             "end": "2026-09-19T01:00:00+02:00",
             "spot": 0.40,
-            "import": 1.10,
-            "export": 0.43,
-        },
-        {
-            "start": "2026-09-19T01:00:00+02:00",
-            "end": "2026-09-19T01:15:00+02:00",
-            "spot": 0.50,
-            "import": 1.20,
-            "export": 0.53,
-        },
-        {
-            "start": "2026-09-19T01:15:00+02:00",
-            "end": "2026-09-19T01:30:00+02:00",
-            "spot": 0.60,
-            "import": 1.30,
-            "export": 0.63,
         },
     ]
 
     price_history = [
         {
-            "timestamp": datetime.fromisoformat("2026-09-19T00:45:00+02:00"),
+            "timestamp": datetime.fromisoformat("2026-09-19T00:46:00+02:00"),
             "attributes": {"all_prices": schedule},
         },
-        # Deliberately no Recorder state at 01:00.
+        # A later snapshot contains the same completed intervals.
         {
-            "timestamp": datetime.fromisoformat("2026-09-19T01:15:00+02:00"),
+            "timestamp": datetime.fromisoformat("2026-09-19T01:16:00+02:00"),
             "attributes": {"all_prices": schedule},
         },
     ]
 
     result = module.extract_spot_price_history(price_history)
 
-    assert len(result) == len(schedule)
-
-    assert [item["start"].isoformat() for item in result] == [
-        item["start"] for item in schedule
-    ]
-
-    assert [item["spot"] for item in result] == [
-        0.10,
-        0.20,
-        0.30,
-        0.40,
-        0.50,
-        0.60,
-    ]
-
+    assert [item["spot"] for item in result] == [0.10, 0.20, 0.30, 0.40]
     assert all(
         item["recorded_at"]
-        == datetime.fromisoformat("2026-09-19T01:15:00+02:00")
+        == datetime.fromisoformat("2026-09-19T01:16:00+02:00")
         for item in result
     )
 
+
+def test_extract_spot_price_history_does_not_include_unfinished_interval():
+    snapshot = datetime.fromisoformat("2026-09-19T00:10:00+02:00")
+    result = module.extract_spot_price_history(
+        [
+            {
+                "timestamp": snapshot,
+                "attributes": {
+                    "all_prices": [
+                        {
+                            "start": "2026-09-19T00:00:00+02:00",
+                            "end": "2026-09-19T00:15:00+02:00",
+                            "spot": 0.10,
+                        },
+                    ]
+                },
+            }
+        ]
+    )
+
+    assert result == []
+
+
+
+
+def test_extract_import_price_interval_history_reconstructs_completed_intervals():
+    snapshot = datetime.fromisoformat("2026-09-19T01:31:00+02:00")
+    result = module.extract_import_price_interval_history(
+        [
+            {
+                "timestamp": snapshot,
+                "attributes": {
+                    "all_prices": [
+                        {
+                            "start": "2026-09-19T01:00:00+02:00",
+                            "end": "2026-09-19T01:15:00+02:00",
+                            "import": 1.2345,
+                        },
+                        {
+                            "start": "2026-09-19T01:15:00+02:00",
+                            "end": "2026-09-19T01:30:00+02:00",
+                            "import": 1.3456,
+                        },
+                    ]
+                },
+            }
+        ]
+    )
+
+    assert [item["import"] for item in result] == [1.2345, 1.3456]
+    assert all(item["recorded_at"] == snapshot for item in result)
 
 def test_shared_import_price_median_uses_price_history_not_consumer_samples():
     price_history = [

@@ -237,10 +237,11 @@ configuration detail and must not be hardcoded into a card.
 
 ### 8.1 Spot price
 
-Spot price is the raw market price.
+Spot price is the raw market price retained in the normalized source model.
 
-It is used for market-price visualization where the Energy Dashboard
-explicitly presents spot price.
+The Energy Dashboard does not use raw spot as its displayed price basis.
+It uses total import price everywhere for its electricity-price presentation
+and household cost calculations.
 
 ### 8.2 Import price
 
@@ -592,8 +593,7 @@ It is not a pixel-perfect implementation requirement.
 
 Show:
 
--   current spot price where the visual explicitly represents market
-    price;
+-   current total import price as the Energy Dashboard price basis;
 -   price class;
 -   Price Quality Index;
 -   current status;

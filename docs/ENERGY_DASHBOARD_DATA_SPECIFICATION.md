@@ -56,19 +56,20 @@ future prices.
 
 ## 2.3 Cost semantics
 
-**Every cost shown by the Energy Dashboard uses total import price.**
+**The Energy Dashboard uses total import price as its primary displayed electricity price.**
 
-Never use spot price for cost.
+All household cost calculations also use total import price.
 
 ``` text
-spot
-→ market-price visualization
-
 import
+→ primary dashboard electricity price
 → actual household purchase cost
 
 export
 → export revenue
+
+spot
+→ retained raw market-price source data; not used as the dashboard price basis
 ```
 
 ## 2.4 Upstream price source
@@ -96,7 +97,7 @@ WHITE  = presentation only
 
   Component                  Required data                Status Owner
   -------------------------- -------------------------- -------- -------
-  Current spot price         current `spot`                GREEN SBE
+  Current import price      current `import`             GREEN SBE
   Price class                `current_price_class`         GREEN SBE
   Price Quality Index        `price_quality_index`         GREEN SBE
   Current status text        class/PQI interpretation     YELLOW SBE
@@ -104,14 +105,12 @@ WHITE  = presentation only
   Stars/quality indicator    PQI presentation              WHITE Card
   Cheapest upcoming period   `cheapest_future_period`      GREEN SBE
 
-### Definition issue
+### Definition
 
-The mockup's prominent current price is a spot-price presentation.
+The dashboard's prominent current price is **total import price**.
 
-The dashboard must label or otherwise clearly communicate that it is
-spot price.
-
-Economic cost displays remain based on import price.
+The displayed price therefore represents the household purchase price, not
+raw Nord Pool spot price.
 
 ------------------------------------------------------------------------
 
@@ -128,9 +127,9 @@ Average Price
 ### Required
 
 ``` text
-minimum spot price
-maximum spot price
-average spot price
+minimum total import price
+maximum total import price
+average total import price
 ```
 
 ### Status
@@ -141,11 +140,11 @@ The population is the current calendar day from `00:00` through the
 current moment. Only intervals that have actually elapsed are included.
 Future intervals for the remainder of today are excluded.
 
-The statistic basis is **spot price**, not total import price.
+The statistic basis is **total import price**.
 
--   lowest = minimum spot value in the population;
--   highest = maximum spot value in the population;
--   average = arithmetic mean of the included spot values;
+-   lowest = minimum total-import value in the population;
+-   highest = maximum total-import value in the population;
+-   average = arithmetic mean of the included total-import values;
 -   low/high period resolution = normalized 15-minute interval.
 
 Business calculations retain full precision. Presentation rounding belongs
@@ -235,7 +234,7 @@ It is never assumed to be a fixed 48-hour future window.
 
 Required:
 
--   spot price history;
+-   total import-price history;
 -   actual house consumption;
 -   optional consumer energy history;
 -   relevant event markers where data exists.
@@ -250,7 +249,7 @@ Home Assistant Recorder/statistics/history
 
 Required:
 
--   15-minute spot price intervals;
+-   15-minute total import-price intervals;
 -   price class;
 -   PQI/price quality;
 -   known future intervals only.
@@ -510,7 +509,7 @@ The dashboard only presents the resulting insight.
 
   Data                         Source                         Card calculates?
   ---------------------------- --------------------------- -------------------
-  Current spot                 SBE price model                              No
+  Current import price        SBE price model                              No
   Current import               SBE price model                              No
   Price class                  SBE                                          No
   PQI                          SBE                                          No
@@ -555,7 +554,7 @@ explicitly waived:
 ## GREEN
 
 1.  Normalized price source.
-2.  Spot/import/export separation.
+2.  Import/export separation; raw spot remains available in the normalized source model.
 3.  Price classes.
 4.  PQI.
 5.  Cheapest future period.
@@ -571,8 +570,8 @@ The following decisions are now frozen for FAS 3 V1.
 
 ## 18.1 Cost and price basis
 
--   All Energy Dashboard cost calculations use **total import price**.
--   Spot price is used for market-price visualization/statistics.
+-   **Total import price is the Energy Dashboard price basis everywhere.**
+-   Raw spot remains part of the normalized source model but is not used as the dashboard price basis or for dashboard statistics.
 -   Export price represents export revenue and is kept separate from cost.
 -   The Nord Pool template is unchanged.
 

@@ -171,7 +171,7 @@ SPOT
 
 IMPORT
 └── actual household purchase price
-    └── ALL dashboard cost calculations
+    └── ALL Energy Dashboard price and cost presentation
 
 EXPORT
 └── export value/revenue
@@ -180,7 +180,7 @@ EXPORT
 
 ### Absolute rule
 
-**Every Energy Dashboard cost is based on total import price, never spot
+**Every Energy Dashboard price and cost is based on total import price; raw spot is not the dashboard price basis
 price.**
 
 This applies to house cost, consumer cost, period cost, cost comparisons
@@ -394,8 +394,8 @@ contract is complete.
 3.  No sensor explosion for 15-minute forecast data.
 4.  Existing public entities remain stable.
 5.  New capabilities should be additive.
-6.  Cost calculations always use total import price.
-7.  Spot remains available for market-price visualization.
+6.  Energy Dashboard price and cost calculations always use total import price.
+7.  Raw spot remains available in the normalized source model but is not the Energy Dashboard price basis.
 8.  Forecast horizon never exceeds today + tomorrow.
 9.  Dashboard history never exceeds 24 hours.
 10. Nord Pool template remains unchanged.

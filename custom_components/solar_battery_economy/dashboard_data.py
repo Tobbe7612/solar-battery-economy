@@ -66,15 +66,65 @@ def _coerce_datetime(value: Any) -> datetime | None:
     return None
 
 
+def extract_import_price_interval_history(
+    price_history: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Reconstruct historical total-import-price intervals from Recorder snapshots."""
+    result: list[dict[str, Any]] = []
+
+    for state in price_history:
+        timestamp = state.get("timestamp")
+        attributes = state.get("attributes") or {}
+        all_prices = attributes.get("all_prices")
+
+        if not isinstance(timestamp, datetime) or not isinstance(all_prices, list):
+            continue
+
+        for interval in all_prices:
+            if not isinstance(interval, dict):
+                continue
+
+            start = _coerce_datetime(interval.get("start"))
+            end = _coerce_datetime(interval.get("end"))
+            import_price = interval.get("import")
+
+            if start is None or end is None or end > timestamp:
+                continue
+
+            try:
+                import_value = float(import_price)
+            except (TypeError, ValueError):
+                continue
+
+            result.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "import": import_value,
+                    "recorded_at": timestamp,
+                }
+            )
+
+    deduped: dict[datetime, dict[str, Any]] = {}
+    for item in result:
+        existing = deduped.get(item["start"])
+        if existing is None or item["recorded_at"] > existing["recorded_at"]:
+            deduped[item["start"]] = item
+
+    return [deduped[key] for key in sorted(deduped)]
+
+
 def extract_spot_price_history(
     price_history: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Reconstruct spot-price intervals from recorded all_prices schedules.
+    """Reconstruct historical spot intervals from the price sensor schedule.
 
-    Each recorded price state contains the structured ``all_prices`` schedule
-    as an attribute. Reconstruct the interval series from those schedules
-    instead of selecting only the interval containing the Recorder state's
-    timestamp.
+    The price sensor stores the published 15-minute market-price schedule in
+    ``all_prices``. Each Recorder snapshot contains the schedule available at
+    that moment. For historical data, use intervals that had already ended at
+    the time of that snapshot, then deduplicate by interval start. This lets
+    Recorder snapshots preserve the published price curve without requiring
+    a separate historical price sensor.
     """
     result: list[dict[str, Any]] = []
 
@@ -94,7 +144,7 @@ def extract_spot_price_history(
             end = _coerce_datetime(interval.get("end"))
             spot = interval.get("spot")
 
-            if start is None or end is None:
+            if start is None or end is None or end > timestamp:
                 continue
 
             try:
@@ -111,10 +161,9 @@ def extract_spot_price_history(
                 }
             )
 
-    # Multiple Recorder states can contain the same all_prices schedule.
-    # Keep the latest recorded snapshot for each price interval.
+    # The same completed interval can appear in many Recorder snapshots.
+    # Keep the latest snapshot that still contains that published interval.
     deduped: dict[datetime, dict[str, Any]] = {}
-
     for item in result:
         existing = deduped.get(item["start"])
         if existing is None or item["recorded_at"] > existing["recorded_at"]:

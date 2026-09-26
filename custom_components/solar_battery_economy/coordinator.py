@@ -25,7 +25,7 @@ from .const import (
 )
 from .economy_calculations import calculate_savings, battery_solar_share
 from .price_source import find_cheapest_future_period
-from .price_source import calculate_today_spot_statistics
+from .price_source import calculate_today_import_price_statistics
 from .price_source import normalize_price_source
 from .analytics import build_statistics_energy_samples_with_price_history
 from .dashboard_data import (
@@ -35,6 +35,7 @@ from .dashboard_data import (
     build_house_analysis,
     calculate_shared_import_price_median,
     extract_spot_price_history,
+    extract_import_price_interval_history,
 )
 from .recorder_adapter import async_get_history, async_get_statistics
 from .recorder_data import clamp_history_window
@@ -250,6 +251,15 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                     }
                     for item in extract_spot_price_history(price_states)
                 ],
+                "import_intervals": [
+                    {
+                        **item,
+                        "start": item["start"].isoformat(),
+                        "end": item["end"].isoformat(),
+                        "recorded_at": item["recorded_at"].isoformat(),
+                    }
+                    for item in extract_import_price_interval_history(price_states)
+                ],
             },
             "price": self.data.get("price", {}),
             "price_intelligence": self.data.get("price_intelligence", {}),
@@ -445,7 +455,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             self.data["price_intelligence"] = {
                 "current_price_class": current_price_class,
                 "price_quality_index": price_quality_index,
-                "today_spot_statistics": calculate_today_spot_statistics(
+                "today_import_price_statistics": calculate_today_import_price_statistics(
                     price_model.get("forecast", []),
                     now=now,
                 ),

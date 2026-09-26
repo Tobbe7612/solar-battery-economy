@@ -16,14 +16,14 @@
 
 | Requirement | Current source | Status | Current finding | Next action |
 |---|---|---:|---|---|
-| Current spot price | normalized price model | GREEN | Current `spot` exists | Present as market price |
+| Current import price | normalized price model | GREEN | Current `import` exists | Present everywhere as dashboard price |
 | Current total import price | normalized price model | GREEN | Current `import` exists | Use for **all costs** |
 | Current export price | normalized price model | GREEN | Current `export` exists | Keep as revenue |
 | Price class | SBE price intelligence | GREEN | `current_price_class` exists | Present only |
 | PQI | SBE price intelligence | GREEN | `price_quality_index` exists | Present only |
 | Cheapest future period | SBE price intelligence | GREEN | Structured result exists | Present only |
 | Future 15-min prices | normalized forecast | GREEN | Structured intervals exist | No entity explosion |
-| Lowest/highest/average today | price intervals | GREEN | Deterministic current-day spot statistics are defined and tested | Present only |
+| Lowest/highest/average today | price intervals | GREEN | Deterministic current-day total-import-price statistics are defined and tested | Present only |
 | 24h house consumption | SBE + Recorder | GREEN | Rolling 24h uses canonical `house_total` and Recorder/statistics | Preserve/test |
 | 24h house cost | Recorder + normalized import price | GREEN | Rolling 24h house-total energy × total import price is implemented and tested | Present only |
 | Cheap-use % | Recorder + normalized import price | GREEN | Shared previous-24h median reference and energy-weighted calculation are implemented and tested | Present only |
@@ -84,7 +84,7 @@ house_grid
 
 This is compatible with the locked dashboard rule:
 
-> **Every dashboard cost uses total import price, never spot.**
+> **Total import price is the Energy Dashboard price basis everywhere.**
 
 ## Remaining implementation gaps
 
@@ -100,7 +100,7 @@ None of the frozen V1 analytical requirements remain RED.
 ### Resolved definitions
 
 Cheap/expensive usage, consumer average price, consumer share, Consumer Price
-Alignment, today's spot statistics and Smart Score semantics are now defined.
+Alignment, today's total-import-price statistics and Smart Score semantics are now defined.
 
 ## Architectural boundary
 
@@ -108,8 +108,8 @@ Canonical business logic belongs in SBE. Historical retrieval, chart slicing, da
 
 ## Guardrails
 
-- Total import price is the sole basis for Energy Dashboard costs.
-- Spot remains a market-price visualization value.
+- Total import price is the sole basis for Energy Dashboard prices and costs.
+- Raw spot remains available in the normalized source model but is not used as the dashboard price basis.
 - Export remains revenue.
 - Nord Pool template remains unchanged.
 - No business logic in Lovelace cards.

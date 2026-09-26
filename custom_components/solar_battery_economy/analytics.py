@@ -599,16 +599,34 @@ def build_deterministic_insights(
 
     for entity_id, consumer in (consumers or {}).items():
         analysis = consumer.get("analysis", {})
+        name = consumer.get("name", entity_id)
         cost = analysis.get("cost")
-        if cost is None:
-            continue
-        insights.append({
-            "type": "consumer_cost",
-            "consumer_id": entity_id,
-            "name": consumer.get("name", entity_id),
-            "energy_kwh": analysis.get("energy_kwh"),
-            "cost": cost,
-            "average_import_price": analysis.get("average_import_price"),
-        })
+        if cost is not None:
+            insights.append({
+                "type": "consumer_cost",
+                "consumer_id": entity_id,
+                "name": name,
+                "energy_kwh": analysis.get("energy_kwh"),
+                "cost": cost,
+                "average_import_price": analysis.get("average_import_price"),
+            })
+
+        share_percent = analysis.get("share_percent")
+        if share_percent is not None:
+            insights.append({
+                "type": "consumer_share",
+                "consumer_id": entity_id,
+                "name": name,
+                "share_percent": share_percent,
+            })
+
+        price_alignment_delta = analysis.get("price_alignment_delta")
+        if price_alignment_delta is not None:
+            insights.append({
+                "type": "consumer_price_alignment",
+                "consumer_id": entity_id,
+                "name": name,
+                "price_alignment_delta": price_alignment_delta,
+            })
 
     return insights

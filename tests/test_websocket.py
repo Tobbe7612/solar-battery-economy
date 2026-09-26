@@ -67,3 +67,11 @@ def test_coordinator_dashboard_uses_shared_price_reference_and_battery_house():
 def test_dashboard_payload_includes_deterministic_insights_builder():
     source = Path("custom_components/solar_battery_economy/coordinator.py").read_text(encoding="utf-8")
     assert "build_deterministic_insights(house, consumers)" in source
+
+
+def test_dashboard_payload_uses_total_import_price_as_primary_price_basis():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    assert '"today_import_price_statistics": calculate_today_import_price_statistics(' in source
+    assert '"import_intervals": [' in source
+    assert '"today_spot_statistics"' not in source
+

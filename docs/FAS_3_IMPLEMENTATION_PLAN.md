@@ -161,8 +161,8 @@ Dashboard component
 
 The required V1 dashboard semantics have now been explicitly defined.
 
-1.  Current prominent price = spot; dashboard costs = total import price.
-2.  Today's low/high/average = spot, current calendar day `00:00` → now,
+1.  Current prominent dashboard price = total import price; dashboard costs = total import price.
+2.  Today's low/high/average = total import price, current calendar day `00:00` → now,
     elapsed intervals only.
 3.  House and consumer cost = energy × total import price over rolling 24h.
 4.  Cheap/expensive reference = median total import price over previous 24h;
@@ -238,7 +238,7 @@ This applies to:
 -   cost-based insights;
 -   price/consumption cost correlations.
 
-Spot price remains available for market-price visualization.
+Raw spot remains available in the normalized source model but is not used as the Energy Dashboard price basis.
 
 ------------------------------------------------------------------------
 
