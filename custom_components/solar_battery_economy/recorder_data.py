@@ -2,9 +2,49 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 MAX_HISTORY = timedelta(hours=24)
+DASHBOARD_TIMEZONE = ZoneInfo("Europe/Stockholm")
+
+
+class DashboardCalendarBoundaries(NamedTuple):
+    """Local calendar boundaries used by the dashboard's two time views."""
+
+    yesterday_start: datetime
+    today_start: datetime
+    tomorrow_start: datetime
+
+
+def dashboard_calendar_boundaries(
+    *,
+    now: datetime,
+) -> DashboardCalendarBoundaries:
+    """Return yesterday, today, and tomorrow starts in Europe/Stockholm.
+
+    The returned datetimes are timezone-aware local instants. They are
+    deliberately independent of Home Assistant's configured timezone.
+    """
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+
+    local_date = now.astimezone(DASHBOARD_TIMEZONE).date()
+    yesterday = local_date - timedelta(days=1)
+    tomorrow = local_date + timedelta(days=1)
+
+    return DashboardCalendarBoundaries(
+        yesterday_start=datetime.combine(
+            yesterday, time.min, tzinfo=DASHBOARD_TIMEZONE
+        ),
+        today_start=datetime.combine(
+            local_date, time.min, tzinfo=DASHBOARD_TIMEZONE
+        ),
+        tomorrow_start=datetime.combine(
+            tomorrow, time.min, tzinfo=DASHBOARD_TIMEZONE
+        ),
+    )
 
 
 def normalize_datetime(value: datetime) -> datetime:
@@ -26,6 +66,19 @@ def clamp_history_window(
         raise ValueError("end must be after start")
     if end - start > MAX_HISTORY:
         start = end - MAX_HISTORY
+    return start, end
+
+
+def normalize_history_window(
+    *,
+    start: datetime,
+    end: datetime,
+) -> tuple[datetime, datetime]:
+    """Normalize and validate a history window without limiting its length."""
+    start = normalize_datetime(start)
+    end = normalize_datetime(end)
+    if end <= start:
+        raise ValueError("end must be after start")
     return start, end
 
 

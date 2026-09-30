@@ -1,5 +1,5 @@
 import importlib.util
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 MODULE_PATH = (
@@ -43,6 +43,37 @@ def test_build_energy_samples_from_statistics_ignores_invalid_change():
     assert result == [
         {"start": start, "end": end, "energy_kwh": 0.25},
     ]
+
+
+def test_select_price_intervals_window_keeps_overlapping_boundary_interval():
+    analysis_start = datetime(2026, 9, 29, 8, tzinfo=timezone.utc)
+    analysis_end = datetime(2026, 9, 30, 8, tzinfo=timezone.utc)
+    intervals = [
+        {
+            "start": analysis_start - timedelta(minutes=10),
+            "end": analysis_start + timedelta(minutes=5),
+            "import": 0.5,
+        },
+        {
+            "start": analysis_start,
+            "end": analysis_start + timedelta(minutes=15),
+            "import": 1.0,
+        },
+        {
+            "start": analysis_end,
+            "end": analysis_end + timedelta(minutes=15),
+            "import": 1.5,
+        },
+    ]
+
+    selected = module.select_price_intervals_window(
+        intervals,
+        start=analysis_start,
+        end=analysis_end,
+    )
+
+    assert selected == intervals[:2]
+
 
 def test_shared_import_price_median_uses_price_history_not_consumer_samples():
     price_history = [

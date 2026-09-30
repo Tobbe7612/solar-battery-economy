@@ -1,6 +1,6 @@
 # coordinator.py
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.core import callback
@@ -44,9 +44,14 @@ from .dashboard_data import (
     build_energy_samples_from_statistics,
     build_house_analysis,
     calculate_shared_import_price_median,
+    select_price_intervals_window,
 )
 from .recorder_adapter import async_get_statistics
-from .recorder_data import clamp_history_window
+from .recorder_data import (
+    clamp_history_window,
+    dashboard_calendar_boundaries,
+    normalize_datetime,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -156,15 +161,29 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         start,
         end,
     ) -> dict:
-        """Return canonical Energy Dashboard data for a bounded history window."""
-        start, end = clamp_history_window(start=start, end=end)
+        """Return dashboard time series plus analysis over the rolling 24h window."""
+        analysis_start, analysis_end = clamp_history_window(
+            start=start,
+            end=end,
+        )
+        calendar = dashboard_calendar_boundaries(now=analysis_end)
+        series_start = normalize_datetime(calendar.yesterday_start)
+        series_end = analysis_end
+
+        forecast = self.data.get("price", {}).get("forecast", [])
+        forecast_ends = [
+            item["end"]
+            for item in forecast
+            if isinstance(item.get("end"), datetime)
+        ]
+        window_end = max([series_end, *forecast_ends])
 
         house_total_entity = self._get_energy_entity_id("house_total")
         grid_house_entity = self._get_energy_entity_id("grid_house")
         battery_house_entity = self._get_energy_entity_id("battery_house")
         consumer_entities = list(self.consumer_entities)
 
-        energy_ids = [
+        analysis_energy_ids = [
             entity_id
             for entity_id in [
                 house_total_entity,
@@ -174,14 +193,19 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             ]
             if entity_id
         ]
+        timeseries_energy_ids = [
+            entity_id
+            for entity_id in [house_total_entity, *consumer_entities]
+            if entity_id
+        ]
 
         try:
             direct_spot_history = await async_get_nordpool_price_history(
                 self.hass,
                 config_entry_id=self.nordpool_config_entry_id,
                 area=self.nordpool_area,
-                start=start,
-                end=end,
+                start=series_start,
+                end=series_end,
                 cache=self._nordpool_price_cache,
             )
         except NordPoolPriceError as err:
@@ -211,32 +235,58 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
         statistics = await async_get_statistics(
             self.hass,
-            set(entity_id for entity_id in energy_ids),
-            start=start,
-            end=end,
+            set(timeseries_energy_ids),
+            start=series_start,
+            end=series_end,
+            types={"change"},
+            enforce_max_history=False,
+        )
+        analysis_statistics = await async_get_statistics(
+            self.hass,
+            set(analysis_energy_ids),
+            start=analysis_start,
+            end=analysis_end,
             types={"change"},
         )
 
         house_total_stats = statistics.get(house_total_entity, []) if house_total_entity else []
-        grid_house_stats = statistics.get(grid_house_entity, []) if grid_house_entity else []
-        battery_house_stats = statistics.get(battery_house_entity, []) if battery_house_entity else []
-
-        house_total_samples = build_statistics_energy_samples_with_price_history(
-            house_total_stats,
-            price_states,
+        analysis_house_total_stats = analysis_statistics.get(house_total_entity, []) if house_total_entity else []
+        analysis_grid_house_stats = analysis_statistics.get(grid_house_entity, []) if grid_house_entity else []
+        analysis_battery_house_stats = analysis_statistics.get(battery_house_entity, []) if battery_house_entity else []
+        analysis_price_intervals = select_price_intervals_window(
+            direct_import_intervals,
+            start=analysis_start,
+            end=analysis_end,
         )
+        analysis_price_states = [
+            {
+                "timestamp": item["start"],
+                "state": item["import"],
+                "attributes": {},
+            }
+            for item in analysis_price_intervals
+        ]
+
         grid_house_samples = build_statistics_energy_samples_with_price_history(
-            grid_house_stats,
-            price_states,
+            analysis_grid_house_stats,
+            analysis_price_states,
         )
         battery_house_samples = build_statistics_energy_samples_with_price_history(
-            battery_house_stats,
-            price_states,
+            analysis_battery_house_stats,
+            analysis_price_states,
+        )
+        analysis_house_total_samples = (
+            build_statistics_energy_samples_with_price_history(
+                analysis_house_total_stats,
+                analysis_price_states,
+            )
         )
 
-        shared_reference_price = calculate_shared_import_price_median(price_states)
+        shared_reference_price = calculate_shared_import_price_median(
+            analysis_price_states
+        )
         house = build_house_analysis(
-            house_total_samples,
+            analysis_house_total_samples,
             reference_price=shared_reference_price,
             battery_house_samples=(
                 battery_house_samples
@@ -253,23 +303,35 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 statistics.get(entity_id, []),
                 price_states,
             )
-            consumers[entity_id] = build_consumer_dashboard_data(
+            analysis_samples = build_statistics_energy_samples_with_price_history(
+                analysis_statistics.get(entity_id, []),
+                analysis_price_states,
+            )
+            consumer_data = build_consumer_dashboard_data(
                 name=name,
                 energy_entity=entity_id,
-                samples=samples,
+                samples=analysis_samples,
                 reference_price=shared_reference_price,
-                house_total_samples=house_total_samples,
+                house_total_samples=analysis_house_total_samples,
                 house_average_import_price=house["average_import_price"],
             )
+            consumer_data["history"] = samples
+            consumers[entity_id] = consumer_data
 
         return {
             "window": {
-                "start": start.isoformat(),
-                "end": end.isoformat(),
-                "hours": round((end - start).total_seconds() / 3600, 3),
+                "start": series_start.isoformat(),
+                "today_start": calendar.today_start.isoformat(),
+                "end": window_end.isoformat(),
+                "hours": round(
+                    (window_end - series_start).total_seconds() / 3600,
+                    3,
+                ),
             },
             "house": house,
-            "house_history": build_energy_samples_from_statistics(house_total_stats),
+            "house_history": build_energy_samples_from_statistics(
+                house_total_stats
+            ),
             "grid_house_history": grid_house_samples,
             "price_history": {
                 "import": [

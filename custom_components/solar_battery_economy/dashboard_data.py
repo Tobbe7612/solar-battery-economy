@@ -19,7 +19,29 @@ from .analytics import (
     build_deterministic_insights,
     calculate_positive_cumulative_delta,
 )
-from .recorder_data import stat_end, stat_start
+from .recorder_data import normalize_datetime, stat_end, stat_start
+
+
+def select_price_intervals_window(
+    intervals: list[dict[str, Any]],
+    *,
+    start: datetime,
+    end: datetime,
+) -> list[dict[str, Any]]:
+    """Select price intervals overlapping a half-open time window."""
+    start = normalize_datetime(start)
+    end = normalize_datetime(end)
+    result = []
+    for interval in intervals:
+        interval_start = interval.get("start")
+        interval_end = interval.get("end")
+        if not isinstance(interval_start, datetime) or not isinstance(
+            interval_end, datetime
+        ):
+            continue
+        if interval_start < end and interval_end > start:
+            result.append(interval)
+    return result
 
 
 def build_energy_samples_from_statistics(

@@ -61,7 +61,7 @@ def test_coordinator_dashboard_uses_shared_price_reference_and_battery_house():
     assert {"reference_price", "battery_house_samples"}.issubset(keywords)
 
     assert 'self._get_energy_entity_id("battery_house")' in source
-    assert 'calculate_shared_import_price_median(price_states)' in source
+    assert 'calculate_shared_import_price_median(\n            analysis_price_states' in source
 
 
 def test_dashboard_payload_includes_deterministic_insights_builder():
@@ -74,4 +74,3 @@ def test_dashboard_payload_uses_total_import_price_as_primary_price_basis():
     assert '"today_import_price_statistics": calculate_today_import_price_statistics(' in source
     assert '"import_intervals": [' in source
     assert '"today_spot_statistics"' not in source
-
