@@ -161,16 +161,41 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         start,
         end,
     ) -> dict:
-        """Return dashboard time series plus analysis over the rolling 24h window."""
+        """Return dashboard data using the existing request/response contract."""
+        return await self.async_build_dashboard_payload(start=start, end=end)
+
+    async def async_build_dashboard_payload(
+        self,
+        *,
+        start,
+        end,
+    ) -> dict:
+        """Build a complete dashboard payload from current cached/runtime data."""
         analysis_start, analysis_end = clamp_history_window(
             start=start,
             end=end,
         )
+        try:
+            price_model = await async_get_nordpool_price_model(
+                self.hass,
+                now=analysis_end,
+                config_entry_id=self.nordpool_config_entry_id,
+                area=self.nordpool_area,
+                cache=self._nordpool_price_cache,
+                very_cheap_limit=self.very_cheap_limit,
+                cheap_limit=self.cheap_limit,
+                normal_limit=self.normal_limit,
+                expensive_limit=self.expensive_limit,
+            )
+        except NordPoolPriceError as err:
+            _LOGGER.debug("Nord Pool dashboard prices unavailable: %s", err)
+            price_model = {"current": None, "forecast": []}
+
         calendar = dashboard_calendar_boundaries(now=analysis_end)
         series_start = normalize_datetime(calendar.yesterday_start)
         series_end = analysis_end
 
-        forecast = self.data.get("price", {}).get("forecast", [])
+        forecast = price_model.get("forecast", [])
         forecast_ends = [
             item["end"]
             for item in forecast
@@ -318,9 +343,34 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             consumer_data["history"] = samples
             consumers[entity_id] = consumer_data
 
+        current_price = price_model.get("current")
+        dashboard_price_intelligence = {
+            "current_price_class": (
+                current_price.get("price_class")
+                if current_price is not None
+                else None
+            ),
+            "price_quality_index": (
+                current_price.get("price_quality")
+                if current_price is not None
+                else None
+            ),
+            "today_import_price_statistics": calculate_today_import_price_statistics(
+                forecast,
+                now=analysis_end,
+            ),
+            "cheapest_future_period": find_cheapest_future_period(
+                forecast,
+                now=analysis_end,
+                duration_minutes=self.price_period_minutes,
+                selection_mode=self.price_selection_mode,
+            ),
+        }
+
         return {
             "window": {
                 "start": series_start.isoformat(),
+                "yesterday_start": calendar.yesterday_start.isoformat(),
                 "today_start": calendar.today_start.isoformat(),
                 "end": window_end.isoformat(),
                 "hours": round(
@@ -361,8 +411,8 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                     for item in direct_import_intervals
                 ],
             },
-            "price": self.data.get("price", {}),
-            "price_intelligence": self.data.get("price_intelligence", {}),
+            "price": price_model,
+            "price_intelligence": dashboard_price_intelligence,
             "consumers": consumers,
             "insights": build_deterministic_insights(house, consumers),
         }

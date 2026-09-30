@@ -10,7 +10,7 @@ COORDINATOR_PATH = (
 )
 
 
-def _dashboard_method_source() -> str:
+def _dashboard_method_source(name="async_build_dashboard_payload") -> str:
     source = COORDINATOR_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
     coordinator = next(
@@ -23,7 +23,7 @@ def _dashboard_method_source() -> str:
         node
         for node in coordinator.body
         if isinstance(node, ast.AsyncFunctionDef)
-        and node.name == "async_get_dashboard_data"
+        and node.name == name
     )
     return ast.get_source_segment(source, method) or ""
 
@@ -36,8 +36,36 @@ def test_dashboard_timeseries_window_is_extended_from_stockholm_calendar():
     assert "series_start = normalize_datetime(calendar.yesterday_start)" in source
     assert '"today_start": calendar.today_start.isoformat()' in source
     assert '"start": series_start.isoformat()' in source
-    assert 'forecast = self.data.get("price", {}).get("forecast", [])' in source
+    assert 'forecast = price_model.get("forecast", [])' in source
     assert "window_end = max([series_end, *forecast_ends])" in source
+    assert '"yesterday_start": calendar.yesterday_start.isoformat()' in source
+
+
+def test_request_response_contract_delegates_to_dashboard_builder():
+    source = _dashboard_method_source("async_get_dashboard_data")
+    assert "return await self.async_build_dashboard_payload(start=start, end=end)" in source
+
+
+def test_dashboard_price_payload_is_built_from_fresh_runtime_model_and_not_coordinator_data():
+    source = _dashboard_method_source()
+
+    assert "price_model = await async_get_nordpool_price_model(" in source
+    assert "cache=self._nordpool_price_cache" in source
+    assert '"price": price_model' in source
+    assert '"price": self.data.get("price"' not in source
+    assert '"price_intelligence": self.data.get("price_intelligence"' not in source
+    assert '"today_import_price_statistics": calculate_today_import_price_statistics(' in source
+    assert '"cheapest_future_period": find_cheapest_future_period(' in source
+    assert "forecast,\n                now=analysis_end" in source
+
+
+def test_dashboard_builder_does_not_trigger_entity_updates_or_use_template_price_sensor():
+    source = _dashboard_method_source()
+
+    assert "async_set_updated_data" not in source
+    assert "async_write_ha_state" not in source
+    assert "_handle_event_update" not in source
+    assert "sensor.nord_pool_se3_aktuellt_pris" not in source
 
 
 def test_dashboard_extended_recorder_request_does_not_remove_analysis_clamp():
