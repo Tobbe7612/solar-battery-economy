@@ -5,7 +5,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.selector import selector
+from homeassistant.helpers.selector import ConfigEntrySelector, selector
 
 from .const import (
     DOMAIN,
@@ -13,7 +13,8 @@ from .const import (
     CONF_SOLAR_POWER,
     CONF_GRID_POWER,
     CONF_BATTERY_POWER,
-    CONF_PRICE_SOURCE,
+    CONF_NORDPOOL_CONFIG_ENTRY,
+    CONF_NORDPOOL_AREA,
     CONF_PRICE_PERIOD_MINUTES,
     CONF_PRICE_SELECTION_MODE,
     CONF_CONSUMERS,
@@ -51,6 +52,10 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_PRICE_PERIOD_MINUTES] = int(
                     user_input[CONF_PRICE_PERIOD_MINUTES]
                 )
+
+            nordpool_error = _validate_nordpool_selection(self.hass, user_input)
+            if nordpool_error is not None:
+                errors["base"] = nordpool_error
             unique_id = DOMAIN
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
@@ -62,9 +67,9 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 user_input[CONF_BATTERY_POWER],
             }
 
-            if len(sensors) < 3:
+            if nordpool_error is None and len(sensors) < 3:
                 errors["base"] = "duplicate_power_sensors"
-            else:
+            elif nordpool_error is None:
                 threshold_error = _validate_price_thresholds(user_input)
 
                 if threshold_error is not None:
@@ -77,7 +82,7 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_build_schema(),
+            data_schema=_build_schema(hass=self.hass),
             errors=errors,
         )
 
@@ -100,9 +105,15 @@ class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
                     user_input[CONF_PRICE_PERIOD_MINUTES]
                 )
 
+            nordpool_error = _validate_nordpool_selection(self.hass, user_input)
+            if nordpool_error is not None:
+                errors["base"] = nordpool_error
+
             threshold_error = _validate_price_thresholds(user_input)
 
-            if threshold_error is not None:
+            if nordpool_error is not None:
+                errors["base"] = nordpool_error
+            elif threshold_error is not None:
                 errors["base"] = threshold_error
             else:
                 # Save options first. The entry will then be reloaded using
@@ -116,7 +127,7 @@ class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_build_schema(defaults),
+            data_schema=_build_schema(defaults, hass=self.hass),
             errors=errors,
         )
 
@@ -170,18 +181,46 @@ def _validate_price_thresholds(user_input) -> str | None:
 # ======================================================
 
 
-def _build_schema(defaults=None):
-    defaults = defaults or {}
+def _validate_nordpool_selection(hass, user_input) -> str | None:
+    """Validate the selected Nord Pool entry and one of its market areas."""
+    config_entry_id = user_input.get(CONF_NORDPOOL_CONFIG_ENTRY)
+    area = user_input.get(CONF_NORDPOOL_AREA)
+    nordpool_entry = hass.config_entries.async_get_entry(config_entry_id)
+    if nordpool_entry is None or nordpool_entry.domain != "nordpool":
+        return "invalid_nordpool_entry"
+    if area not in nordpool_entry.data.get("areas", []):
+        return "invalid_nordpool_area"
+    return None
 
-    power_selector = selector(
+
+def _build_schema(defaults=None, *, hass=None):
+    defaults = defaults or {}
+    nordpool_entries = (
+        hass.config_entries.async_entries("nordpool") if hass is not None else []
+    )
+    default_nordpool_entry = defaults.get(CONF_NORDPOOL_CONFIG_ENTRY)
+    if default_nordpool_entry is None and len(nordpool_entries) == 1:
+        default_nordpool_entry = nordpool_entries[0].entry_id
+    selected_entry = next(
+        (entry for entry in nordpool_entries if entry.entry_id == default_nordpool_entry),
+        None,
+    )
+    default_nordpool_area = defaults.get(CONF_NORDPOOL_AREA)
+    if (
+        default_nordpool_area is None
+        and selected_entry is not None
+        and len(selected_entry.data.get("areas", [])) == 1
+    ):
+        default_nordpool_area = selected_entry.data["areas"][0]
+    area_options = sorted(
         {
-            "entity": {
-                "domain": "sensor",
-            }
+            area
+            for entry in nordpool_entries
+            for area in entry.data.get("areas", [])
         }
     )
 
-    price_selector = selector(
+    power_selector = selector(
         {
             "entity": {
                 "domain": "sensor",
@@ -207,11 +246,22 @@ def _build_schema(defaults=None):
                 default=defaults.get(CONF_BATTERY_POWER),
             ): power_selector,
 
-            # ----- Price source -----
             vol.Required(
-                CONF_PRICE_SOURCE,
-                default=defaults.get(CONF_PRICE_SOURCE),
-            ): price_selector,
+                CONF_NORDPOOL_CONFIG_ENTRY,
+                default=default_nordpool_entry,
+            ): ConfigEntrySelector({"integration": "nordpool"}),
+
+            vol.Required(
+                CONF_NORDPOOL_AREA,
+                default=default_nordpool_area,
+            ): selector(
+                {
+                    "select": {
+                        "options": area_options,
+                        "multiple": False,
+                    }
+                }
+            ),
 
             # ----- Future price period -----
             vol.Optional(

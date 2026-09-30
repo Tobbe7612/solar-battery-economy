@@ -624,7 +624,7 @@ The config flow:
 
 - prevents duplicate configuration
 - requires three distinct power sensors
-- requires import and export price sensors
+- requires a configured Nord Pool integration and market area
 - accepts optional total, solar and battery investment values
 - accepts CO₂ factor
 - accepts currency
@@ -641,7 +641,8 @@ DKK
 GBP
 ```
 
-The integration does not perform currency conversion. The price sensors must use the selected currency.
+The integration does not perform currency conversion. Nord Pool prices use
+the currency configured by the selected integration.
 
 ### Battery-less systems
 
@@ -796,7 +797,7 @@ Add automated tests for:
 - annualization
 - restart restoration
 - zero export price
-- unavailable price sensors
+- unavailable Nord Pool prices
 
 ---
 

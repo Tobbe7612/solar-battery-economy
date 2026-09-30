@@ -1,4 +1,4 @@
-"""Price source normalization for Solar Battery Economy."""
+"""Nord Pool price-model and price-intelligence helpers for SBE."""
 
 from __future__ import annotations
 
@@ -14,6 +14,14 @@ DEFAULT_VERY_CHEAP_LIMIT = 1.00
 DEFAULT_CHEAP_LIMIT = 1.40
 DEFAULT_NORMAL_LIMIT = 1.80
 DEFAULT_EXPENSIVE_LIMIT = 2.20
+
+IMPORT_SURCHARGE = 0.1267
+ENERGY_TAX = 0.36
+VAT_RATE = 0.25
+VARIABLE_GRID_FEE = 0.14875
+EXPORT_GRID_BENEFIT = 0.033
+TAX_REDUCTION = 0.0
+EXPORT_SURCHARGE = 0.0
 
 
 VERY_CHEAP = "VERY_CHEAP"
@@ -302,105 +310,119 @@ def calculate_today_import_price_statistics(
         "interval_count": len(intervals),
     }
 
-def normalize_price_source(
-    attributes: dict[str, Any],
-    now: datetime | None = None,
-    *,
-    very_cheap_limit: float = DEFAULT_VERY_CHEAP_LIMIT,
-    cheap_limit: float = DEFAULT_CHEAP_LIMIT,
-    normal_limit: float = DEFAULT_NORMAL_LIMIT,
-    expensive_limit: float = DEFAULT_EXPENSIVE_LIMIT,
-) -> dict[str, Any]:
-    """Normalize price data from a Home Assistant sensor.
 
-    The input is expected to contain an ``all_prices`` attribute
-    consisting of 15-minute price intervals.
+def normalize_nordpool_price_indices(
+    price_indices: Any,
+) -> list[dict[str, Any]]:
+    """Convert Nord Pool price-index results to SBE spot intervals.
 
-    Source values are preserved. Each valid interval is enriched with
-    classification and price quality based on the configured import-price
-    thresholds.
+    ``nordpool.get_price_indices_for_date`` returns prices in SEK/MWh.
+    This pure adapter converts them to SEK/kWh and preserves the existing
+    interval timestamp representation (``datetime``). Import and export
+    prices are intentionally not calculated here; a later SBE layer can
+    enrich these spot intervals with those values.
+
+    Malformed rows are skipped, matching the legacy adapter's
+    behavior for invalid source intervals. A missing or non-list
+    result produces an empty list.
     """
-    all_prices = attributes.get("all_prices")
+    if not isinstance(price_indices, list):
+        return []
 
-    if not isinstance(all_prices, list):
-        return {
-            "current": None,
-            "forecast": [],
-        }
+    intervals: list[dict[str, Any]] = []
 
-    # Validate the configured thresholds once before processing the forecast.
-    if very_cheap_limit >= cheap_limit:
-        raise ValueError("very_cheap_limit must be below cheap_limit")
-
-    if cheap_limit >= normal_limit:
-        raise ValueError("cheap_limit must be below normal_limit")
-
-    if normal_limit >= expensive_limit:
-        raise ValueError("normal_limit must be below expensive_limit")
-
-    forecast: list[dict[str, Any]] = []
-
-    for item in all_prices:
+    for item in price_indices:
         if not isinstance(item, dict):
             continue
 
         try:
             start = datetime.fromisoformat(str(item["start"]))
             end = datetime.fromisoformat(str(item["end"]))
-
-            spot = item["spot"]
-            import_price = item["import"]
-            export_price = item["export"]
+            spot = float(item["price"]) / 1000
         except (KeyError, TypeError, ValueError):
             continue
 
-        # The normalized model preserves the original source values.
-        interval = {
-            "start": start,
-            "end": end,
-            "spot": spot,
-            "import": import_price,
-            "export": export_price,
-        }
+        intervals.append({"start": start, "end": end, "spot": spot})
 
-        # Price intelligence is based on the import price because this is
-        # the price relevant when deciding when electricity is expensive
-        # or cheap for the household.
-        try:
-            import_price_float = float(import_price)
-        except (TypeError, ValueError):
-            import_price_float = None
+    return intervals
 
-        if import_price_float is not None:
-            interval["price_class"] = classify_price(
-                import_price_float,
-                very_cheap_limit=very_cheap_limit,
-                cheap_limit=cheap_limit,
-                normal_limit=normal_limit,
-                expensive_limit=expensive_limit,
-            )
-            interval["price_quality"] = calculate_price_quality(
-                import_price_float,
-                very_cheap_limit=very_cheap_limit,
-                cheap_limit=cheap_limit,
-                normal_limit=normal_limit,
-                expensive_limit=expensive_limit,
-            )
-        else:
-            interval["price_class"] = None
-            interval["price_quality"] = None
 
-        forecast.append(interval)
+def build_nordpool_price_model(
+    prices_by_day: dict[str, list[dict[str, Any]]],
+    *,
+    now: datetime,
+    very_cheap_limit: float = DEFAULT_VERY_CHEAP_LIMIT,
+    cheap_limit: float = DEFAULT_CHEAP_LIMIT,
+    normal_limit: float = DEFAULT_NORMAL_LIMIT,
+    expensive_limit: float = DEFAULT_EXPENSIVE_LIMIT,
+) -> dict[str, Any]:
+    """Build the existing current/forecast model from spot intervals."""
+    spot_forecast = sorted(
+        [
+            interval
+            for day in ("today", "tomorrow")
+            for interval in prices_by_day.get(day, [])
+        ],
+        key=lambda interval: interval["start"],
+    )
+    forecast = enrich_nordpool_price_intervals(
+        spot_forecast,
+        very_cheap_limit=very_cheap_limit,
+        cheap_limit=cheap_limit,
+        normal_limit=normal_limit,
+        expensive_limit=expensive_limit,
+    )
+    current = next(
+        (
+            interval
+            for interval in forecast
+            if interval["start"] <= now < interval["end"]
+        ),
+        None,
+    )
+    return {"current": current, "forecast": forecast}
 
-    current = None
 
-    if now is not None:
-        for interval in forecast:
-            if interval["start"] <= now < interval["end"]:
-                current = interval
-                break
-
-    return {
-        "current": current,
-        "forecast": forecast,
-    }
+def enrich_nordpool_price_intervals(
+    intervals: list[dict[str, Any]],
+    *,
+    very_cheap_limit: float = DEFAULT_VERY_CHEAP_LIMIT,
+    cheap_limit: float = DEFAULT_CHEAP_LIMIT,
+    normal_limit: float = DEFAULT_NORMAL_LIMIT,
+    expensive_limit: float = DEFAULT_EXPENSIVE_LIMIT,
+) -> list[dict[str, Any]]:
+    """Add SBE import/export prices and price intelligence to spot intervals."""
+    enriched: list[dict[str, Any]] = []
+    for interval in intervals:
+        spot = float(interval["spot"])
+        import_price = (
+            (spot + IMPORT_SURCHARGE + ENERGY_TAX) * (1 + VAT_RATE)
+            + VARIABLE_GRID_FEE
+        )
+        export_price = (
+            spot + EXPORT_GRID_BENEFIT + TAX_REDUCTION + EXPORT_SURCHARGE
+        )
+        price_class = classify_price(
+            import_price,
+            very_cheap_limit=very_cheap_limit,
+            cheap_limit=cheap_limit,
+            normal_limit=normal_limit,
+            expensive_limit=expensive_limit,
+        )
+        price_quality = calculate_price_quality(
+            import_price,
+            very_cheap_limit=very_cheap_limit,
+            cheap_limit=cheap_limit,
+            normal_limit=normal_limit,
+            expensive_limit=expensive_limit,
+        )
+        enriched.append(
+            {
+                **interval,
+                "import": import_price,
+                "export": export_price,
+                "price_class": price_class,
+                "price_quality": price_quality,
+            }
+        )
+    return enriched

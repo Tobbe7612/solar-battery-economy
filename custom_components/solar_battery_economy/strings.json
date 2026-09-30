@@ -9,7 +9,8 @@
           "solar_power": "Solar production power sensor",
           "grid_power": "Grid power sensor",
           "battery_power": "Battery power sensor",
-          "price_source": "Electricity price source sensor",
+          "nordpool_config_entry": "Official Nord Pool integration",
+          "nordpool_area": "Nord Pool market area",
           "investment": "System investment cost (SEK)",
           "co2_factor": "Grid CO₂ factor (kg per kWh)",
           "advanced_mode": "Enable Advanced / Diagnostic Mode"
@@ -24,16 +25,22 @@
     "step": {
       "init": {
         "title": "Solar Battery Economy Settings",
+        "description": "Select the Nord Pool integration and market area. Existing installations may need to choose these again before SBE price data is available.",
         "data": {
           "solar_power": "Solar production power sensor",
           "grid_power": "Grid power sensor",
           "battery_power": "Battery power sensor",
-          "price_source": "Electricity price source sensor",
+          "nordpool_config_entry": "Official Nord Pool integration",
+          "nordpool_area": "Nord Pool market area",
           "investment": "System investment cost (SEK)",
           "co2_factor": "Grid CO₂ factor (kg per kWh)",
           "advanced_mode": "Enable Advanced / Diagnostic Mode"
         }
       }
     }
+  },
+  "error": {
+    "invalid_nordpool_entry": "Select a configured Nord Pool integration.",
+    "invalid_nordpool_area": "Select a market area configured in that Nord Pool integration."
   }
 }

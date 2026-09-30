@@ -67,7 +67,7 @@ The current SBE implementation contains:
 -   persistent Store;
 -   economy/savings calculations;
 -   battery-origin money attribution;
--   current import/export price sensors;
+-   current import/export price entities derived from Nord Pool data;
 -   price normalization/intelligence;
 -   price quality index;
 -   cheapest future period;
@@ -303,18 +303,18 @@ unnecessarily; verify and document it instead.
 
 ------------------------------------------------------------------------
 
-# FAS 3.4 --- Price Source Adapter
+# FAS 3.4 --- Nord Pool Runtime
 
 ## Objective
 
-Consume the user's existing structured Nord Pool template source.
+Use the configured official Nord Pool integration and market area directly
+for current, forecast, and historical market intervals.
 
 Input:
 
 ``` text
-current price
-all_prices[]
-tomorrow_available
+Nord Pool price indices for the requested delivery date
+configured market area and currency
 ```
 
 Intervals:
@@ -333,7 +333,9 @@ Output:
 normalized Price Model
 ```
 
-The upstream Nord Pool template must not be modified.
+The Nord Pool integration supplies spot data; SBE applies its established
+import/export formulas. Historical requests outside Nord Pool's supported
+retention window return no price intervals and are not filled from Recorder.
 
 ------------------------------------------------------------------------
 
@@ -599,7 +601,7 @@ Do not change entity identity merely for implementation convenience.
 -   consumer removal/update;
 -   invalid entity;
 -   unavailable entity;
--   unavailable price source;
+-   unavailable Nord Pool prices;
 -   unavailable tomorrow data.
 
 ## Persistence tests
@@ -638,7 +640,7 @@ Do not change entity identity merely for implementation convenience.
         |
 6. Verify/complete House Total
         |
-7. Price source adapter verification
+7. Nord Pool runtime verification
         |
 8. Price intelligence verification
         |

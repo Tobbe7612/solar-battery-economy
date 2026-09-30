@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from .analytics import (
@@ -49,133 +49,10 @@ def build_energy_samples_from_statistics(
     return result
 
 
-def _coerce_datetime(value: Any) -> datetime | None:
-    """Convert an ISO timestamp or datetime to an aware datetime."""
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed
-    return None
-
-
-def extract_import_price_interval_history(
-    price_history: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Reconstruct historical total-import-price intervals from Recorder snapshots."""
-    result: list[dict[str, Any]] = []
-
-    for state in price_history:
-        timestamp = state.get("timestamp")
-        attributes = state.get("attributes") or {}
-        all_prices = attributes.get("all_prices")
-
-        if not isinstance(timestamp, datetime) or not isinstance(all_prices, list):
-            continue
-
-        for interval in all_prices:
-            if not isinstance(interval, dict):
-                continue
-
-            start = _coerce_datetime(interval.get("start"))
-            end = _coerce_datetime(interval.get("end"))
-            import_price = interval.get("import")
-
-            if start is None or end is None or end > timestamp:
-                continue
-
-            try:
-                import_value = float(import_price)
-            except (TypeError, ValueError):
-                continue
-
-            result.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "import": import_value,
-                    "recorded_at": timestamp,
-                }
-            )
-
-    deduped: dict[datetime, dict[str, Any]] = {}
-    for item in result:
-        existing = deduped.get(item["start"])
-        if existing is None or item["recorded_at"] > existing["recorded_at"]:
-            deduped[item["start"]] = item
-
-    return [deduped[key] for key in sorted(deduped)]
-
-
-def extract_spot_price_history(
-    price_history: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Reconstruct historical spot intervals from the price sensor schedule.
-
-    The price sensor stores the published 15-minute market-price schedule in
-    ``all_prices``. Each Recorder snapshot contains the schedule available at
-    that moment. For historical data, use intervals that had already ended at
-    the time of that snapshot, then deduplicate by interval start. This lets
-    Recorder snapshots preserve the published price curve without requiring
-    a separate historical price sensor.
-    """
-    result: list[dict[str, Any]] = []
-
-    for state in price_history:
-        timestamp = state.get("timestamp")
-        attributes = state.get("attributes") or {}
-        all_prices = attributes.get("all_prices")
-
-        if not isinstance(timestamp, datetime) or not isinstance(all_prices, list):
-            continue
-
-        for interval in all_prices:
-            if not isinstance(interval, dict):
-                continue
-
-            start = _coerce_datetime(interval.get("start"))
-            end = _coerce_datetime(interval.get("end"))
-            spot = interval.get("spot")
-
-            if start is None or end is None or end > timestamp:
-                continue
-
-            try:
-                spot_value = float(spot)
-            except (TypeError, ValueError):
-                continue
-
-            result.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "spot": spot_value,
-                    "recorded_at": timestamp,
-                }
-            )
-
-    # The same completed interval can appear in many Recorder snapshots.
-    # Keep the latest snapshot that still contains that published interval.
-    deduped: dict[datetime, dict[str, Any]] = {}
-    for item in result:
-        existing = deduped.get(item["start"])
-        if existing is None or item["recorded_at"] > existing["recorded_at"]:
-            deduped[item["start"]] = item
-
-    return [deduped[key] for key in sorted(deduped)]
-
-
 def extract_import_price_history(
     price_history: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Extract total-import price states from Recorder history."""
+    """Extract total-import prices from normalized interval states."""
     result: list[dict[str, Any]] = []
     for state in price_history:
         timestamp = state.get("timestamp")

@@ -2,249 +2,159 @@ from datetime import datetime
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
     / "solar_battery_economy"
-    / "price_source.py"
+    / "price_model.py"
 )
 
 spec = importlib.util.spec_from_file_location(
-    "solar_battery_economy_price_source",
+    "solar_battery_economy_price_model",
     MODULE_PATH,
 )
 
 if spec is None or spec.loader is None:
     raise ImportError(f"Could not load module from {MODULE_PATH}")
 
-price_source = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(price_source)
+price_model = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(price_model)
 
-normalize_price_source = price_source.normalize_price_source
-find_cheapest_future_period = price_source.find_cheapest_future_period
+find_cheapest_future_period = price_model.find_cheapest_future_period
+normalize_nordpool_price_indices = price_model.normalize_nordpool_price_indices
+build_nordpool_price_model = price_model.build_nordpool_price_model
+enrich_nordpool_price_intervals = price_model.enrich_nordpool_price_intervals
 
-def test_normalize_valid_price_intervals():
-    attributes = {
-        "all_prices": [
+
+def test_nordpool_adapter_converts_sek_per_mwh_and_preserves_intervals():
+    result = normalize_nordpool_price_indices(
+        [
             {
-                "start": "2026-08-31T18:00:00+02:00",
-                "end": "2026-08-31T18:15:00+02:00",
-                "spot": 0.50,
-                "import": 1.20,
-                "export": 0.55,
+                "start": "2026-09-28T10:00:00+02:00",
+                "end": "2026-09-28T10:15:00+02:00",
+                "price": 669.68,
             },
             {
-                "start": "2026-08-31T18:15:00+02:00",
-                "end": "2026-08-31T18:30:00+02:00",
-                "spot": 0.60,
-                "import": 1.32,
-                "export": 0.65,
+                "start": "2026-09-28T10:15:00+02:00",
+                "end": "2026-09-28T10:30:00+02:00",
+                "price": 700.0,
             },
         ]
-    }
-
-    result = normalize_price_source(attributes)
-
-    assert len(result["forecast"]) == 2
-
-    first = result["forecast"][0]
-
-    assert first["spot"] == 0.50
-    assert first["import"] == 1.20
-    assert first["export"] == 0.55
-
-    assert first["start"] == datetime.fromisoformat(
-        "2026-08-31T18:00:00+02:00"
-    )
-    assert first["end"] == datetime.fromisoformat(
-        "2026-08-31T18:15:00+02:00"
     )
 
+    assert [interval["start"] for interval in result] == [
+        datetime.fromisoformat("2026-09-28T10:00:00+02:00"),
+        datetime.fromisoformat("2026-09-28T10:15:00+02:00"),
+    ]
+    assert [interval["end"] for interval in result] == [
+        datetime.fromisoformat("2026-09-28T10:15:00+02:00"),
+        datetime.fromisoformat("2026-09-28T10:30:00+02:00"),
+    ]
+    assert [interval["spot"] for interval in result] == pytest.approx(
+        [0.66968, 0.7]
+    )
+    assert all(set(interval) == {"start", "end", "spot"} for interval in result)
 
-def test_current_price_is_selected_from_active_interval():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "2026-08-31T18:00:00+02:00",
-                "end": "2026-08-31T18:15:00+02:00",
-                "spot": 0.50,
-                "import": 1.20,
-                "export": 0.55,
-            },
-            {
-                "start": "2026-08-31T18:15:00+02:00",
-                "end": "2026-08-31T18:30:00+02:00",
-                "spot": 0.60,
-                "import": 1.32,
-                "export": 0.65,
-            },
+
+def test_nordpool_adapter_skips_invalid_rows():
+    result = normalize_nordpool_price_indices(
+        [
+            None,
+            {"start": "bad", "end": "2026-09-28T10:15:00+02:00", "price": 20},
+            {"start": "2026-09-28T10:00:00+02:00", "end": "2026-09-28T10:15:00+02:00"},
+            {"start": "2026-09-28T10:15:00+02:00", "end": "2026-09-28T10:30:00+02:00", "price": "bad"},
+            {"start": "2026-09-28T10:30:00+02:00", "end": "2026-09-28T10:45:00+02:00", "price": 500},
         ]
-    }
-
-    current_time = datetime.fromisoformat(
-        "2026-08-31T18:07:00+02:00"
     )
 
-    result = normalize_price_source(
-        attributes,
-        now=current_time,
+    assert len(result) == 1
+    assert result[0]["spot"] == 0.5
+
+
+def test_nordpool_adapter_returns_empty_list_for_empty_or_unexpected_result():
+    assert normalize_nordpool_price_indices([]) == []
+    assert normalize_nordpool_price_indices(None) == []
+    assert normalize_nordpool_price_indices({"price_indices": []}) == []
+
+
+def test_nordpool_price_model_includes_today_and_tomorrow_spot_intervals():
+    today_start = datetime.fromisoformat("2026-09-28T10:00:00+02:00")
+    today_end = datetime.fromisoformat("2026-09-28T10:15:00+02:00")
+    tomorrow_start = datetime.fromisoformat("2026-09-29T10:00:00+02:00")
+    tomorrow_end = datetime.fromisoformat("2026-09-29T10:15:00+02:00")
+    today = {"start": today_start, "end": today_end, "spot": 0.5}
+    tomorrow = {"start": tomorrow_start, "end": tomorrow_end, "spot": 0.7}
+
+    result = build_nordpool_price_model(
+        {"today": [today], "tomorrow": [tomorrow]},
+        now=datetime.fromisoformat("2026-09-28T10:07:00+02:00"),
     )
 
-    assert result["current"]["spot"] == 0.50
-    assert result["current"]["import"] == 1.20
-    assert result["current"]["export"] == 0.55
-
-
-def test_current_interval_is_end_exclusive():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "2026-08-31T18:00:00+02:00",
-                "end": "2026-08-31T18:15:00+02:00",
-                "spot": 0.50,
-                "import": 1.20,
-                "export": 0.55,
-            },
-            {
-                "start": "2026-08-31T18:15:00+02:00",
-                "end": "2026-08-31T18:30:00+02:00",
-                "spot": 0.60,
-                "import": 1.32,
-                "export": 0.65,
-            },
-        ]
+    assert result["current"]["start"] == today_start
+    assert result["current"]["end"] == today_end
+    assert [item["spot"] for item in result["forecast"]] == [0.5, 0.7]
+    assert result["current"]["import"] == pytest.approx(
+        ((0.5 + 0.1267 + 0.36) * 1.25) + 0.14875
+    )
+    assert result["current"]["export"] == pytest.approx(0.5 + 0.033)
+    assert result["current"]["price_class"] == "CHEAP"
+    assert result["current"]["price_quality"] == 76.1
+    assert set(result["current"]) == {
+        "start",
+        "end",
+        "spot",
+        "import",
+        "export",
+        "price_class",
+        "price_quality",
     }
 
-    current_time = datetime.fromisoformat(
-        "2026-08-31T18:15:00+02:00"
+
+def test_spot_enrichment_applies_vat_to_spot_and_import_components():
+    result = enrich_nordpool_price_intervals(
+        [{"start": datetime(2026, 9, 28, 10), "end": datetime(2026, 9, 28, 10, 15), "spot": 0.5}]
+    )[0]
+
+    assert result["import"] == pytest.approx(1.382125)
+    assert result["export"] == pytest.approx(0.533)
+
+
+def test_nordpool_model_selects_current_interval_end_exclusively():
+    intervals = [
+        {
+            "start": datetime(2026, 9, 28, 10),
+            "end": datetime(2026, 9, 28, 10, 15),
+            "spot": 0.5,
+        },
+        {
+            "start": datetime(2026, 9, 28, 10, 15),
+            "end": datetime(2026, 9, 28, 10, 30),
+            "spot": 0.6,
+        },
+    ]
+    model = build_nordpool_price_model(
+        {"today": intervals, "tomorrow": []},
+        now=datetime(2026, 9, 28, 10, 15),
     )
 
-    result = normalize_price_source(
-        attributes,
-        now=current_time,
+    assert model["current"]["spot"] == 0.6
+    assert model["current"]["import"] == pytest.approx(
+        ((0.6 + 0.1267 + 0.36) * 1.25) + 0.14875
     )
 
-    assert result["current"]["spot"] == 0.60
-    assert result["current"]["import"] == 1.32
-    assert result["current"]["export"] == 0.65
+
+def test_empty_nordpool_data_builds_empty_price_model():
+    result = build_nordpool_price_model(
+        {"today": [], "tomorrow": []},
+        now=datetime(2026, 9, 28, 10),
+    )
+
+    assert result == {"current": None, "forecast": []}
 
 
-def test_forecast_order_is_preserved():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "2026-08-31T19:00:00+02:00",
-                "end": "2026-08-31T19:15:00+02:00",
-                "spot": 0.70,
-                "import": 1.45,
-                "export": 0.73,
-            },
-            {
-                "start": "2026-08-31T19:15:00+02:00",
-                "end": "2026-08-31T19:30:00+02:00",
-                "spot": 0.80,
-                "import": 1.57,
-                "export": 0.83,
-            },
-        ]
-    }
-
-    result = normalize_price_source(attributes)
-
-    assert result["forecast"][0]["spot"] == 0.70
-    assert result["forecast"][1]["spot"] == 0.80
-
-
-def test_empty_all_prices_returns_empty_forecast_and_no_current():
-    result = normalize_price_source({"all_prices": []})
-
-    assert result["forecast"] == []
-    assert result["current"] is None
-
-
-def test_missing_all_prices_returns_empty_model():
-    result = normalize_price_source({})
-
-    assert result["forecast"] == []
-    assert result["current"] is None
-
-
-def test_unknown_all_prices_returns_empty_model():
-    result = normalize_price_source({"all_prices": "unknown"})
-
-    assert result["forecast"] == []
-    assert result["current"] is None
-
-
-def test_invalid_intervals_are_ignored():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "not-a-date",
-                "end": "2026-08-31T19:15:00+02:00",
-                "spot": 0.50,
-                "import": 1.20,
-                "export": 0.55,
-            },
-            {
-                "start": "2026-08-31T19:15:00+02:00",
-                "end": "2026-08-31T19:30:00+02:00",
-                "spot": 0.60,
-                "import": 1.32,
-                "export": 0.65,
-            },
-        ]
-    }
-
-    result = normalize_price_source(attributes)
-
-    assert len(result["forecast"]) == 1
-    assert result["forecast"][0]["spot"] == 0.60
-
-
-def test_missing_price_fields_are_ignored():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "2026-08-31T19:00:00+02:00",
-                "end": "2026-08-31T19:15:00+02:00",
-                "spot": 0.50,
-                "import": 1.20,
-            },
-            {
-                "start": "2026-08-31T19:15:00+02:00",
-                "end": "2026-08-31T19:30:00+02:00",
-                "spot": 0.60,
-                "import": 1.32,
-                "export": 0.65,
-            },
-        ]
-    }
-
-    result = normalize_price_source(attributes)
-
-    assert len(result["forecast"]) == 1
-    assert result["forecast"][0]["export"] == 0.65
-
-
-def test_future_intervals_are_retained():
-    attributes = {
-        "all_prices": [
-            {
-                "start": "2026-09-01T00:00:00+02:00",
-                "end": "2026-09-01T00:15:00+02:00",
-                "spot": 0.40,
-                "import": 1.08,
-                "export": 0.43,
-            },
-        ]
-    }
-
-    result = normalize_price_source(attributes)
-
-    assert len(result["forecast"]) == 1
-    assert result["forecast"][0]["spot"] == 0.40
 def test_find_cheapest_future_15_minute_period():
     from datetime import datetime
 
@@ -454,7 +364,7 @@ def test_find_cheapest_future_period_excludes_current_interval():
     assert result["average_import_price"] == 0.80
 
 def test_calculate_today_import_price_statistics_uses_today_through_now():
-    calculate_today_import_price_statistics = price_source.calculate_today_import_price_statistics
+    calculate_today_import_price_statistics = price_model.calculate_today_import_price_statistics
     now = datetime.fromisoformat("2026-09-19T12:07:00+02:00")
     forecast = [
         {

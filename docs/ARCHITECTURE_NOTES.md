@@ -55,7 +55,7 @@ Configured HA sensors
     ├── solar power
     ├── grid power
     ├── battery power
-    └── configured price source
+    └── selected Nord Pool integration and market area
             │
             ▼
 SolarBatteryEconomyCoordinator
@@ -138,7 +138,7 @@ business logic.
 ## 5. Data Flow
 
 ``` text
-Nord Pool template
+Configured Nord Pool integration + market area
         │
         ▼
    SBE Price Adapter
@@ -154,9 +154,7 @@ Nord Pool template
         └── forecast intervals
 ```
 
-The user's existing Nord Pool template remains an upstream source.
-
-It must not be modified as part of this architecture work.
+SBE reads Nord Pool market intervals directly through the integration runtime.
 
 ------------------------------------------------------------------------
 
@@ -398,7 +396,7 @@ contract is complete.
 7.  Raw spot remains available in the normalized source model but is not the Energy Dashboard price basis.
 8.  Forecast horizon never exceeds today + tomorrow.
 9.  Dashboard history never exceeds 24 hours.
-10. Nord Pool template remains unchanged.
+10. Nord Pool integration configuration remains owned by Home Assistant.
 11. Flow Card remains focused on live flows.
 12. Phase Load Card remains focused on phase loading.
 13. New code must be covered by appropriate tests.
@@ -441,7 +439,7 @@ Energy Data Contract        UPDATED / FROZEN
 Dashboard target            APPROVED
 Time horizon                LOCKED
 Cost semantics              LOCKED
-Nord Pool template          LOCKED / UNCHANGED
+Nord Pool integration      CONFIGURED IN HOME ASSISTANT
 
 Next:
 FAS 3.1 Data Specification

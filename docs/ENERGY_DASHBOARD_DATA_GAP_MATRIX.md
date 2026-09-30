@@ -111,7 +111,8 @@ Canonical business logic belongs in SBE. Historical retrieval, chart slicing, da
 - Total import price is the sole basis for Energy Dashboard prices and costs.
 - Raw spot remains available in the normalized source model but is not used as the dashboard price basis.
 - Export remains revenue.
-- Nord Pool template remains unchanged.
+- SBE reads Nord Pool data directly from the configured integration and
+  market area.
 - No business logic in Lovelace cards.
 - No forecast entity explosion.
 - Existing verified entity contracts remain protected.

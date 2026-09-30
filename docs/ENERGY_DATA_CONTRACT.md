@@ -112,13 +112,11 @@ Existing SBE entities should remain stable whenever reasonably possible.
 Existing entity unique IDs, units, semantics and historical continuity
 must not be changed unnecessarily.
 
-### 3.6 Do not modify the upstream Nord Pool template
+### 3.6 Nord Pool integration is the price source
 
-The user's existing Nord Pool-based price template is an upstream
-source.
-
-Its existing structure and formulas are outside the scope of SBE/Card
-implementation changes.
+SBE selects the configured Nord Pool integration and market area, then reads
+current, forecast, and historical intervals directly. Import and export
+prices are calculated by SBE using the established formulas.
 
 ------------------------------------------------------------------------
 
@@ -199,20 +197,9 @@ required by a later approved architecture change.
 
 ## 7. Price Data Contract
 
-The upstream price source is the user's existing Nord Pool based
-template sensor.
-
-The current source provides:
-
--   current price;
--   spot price;
--   import price;
--   export price;
--   15-minute intervals;
--   today's intervals;
--   tomorrow's intervals;
--   `tomorrow_available`;
--   structured `all_prices`.
+SBE reads current, forecast, and historical market intervals directly from
+the configured Nord Pool integration and market area. No separate price
+sensor is required.
 
 Conceptual interval structure:
 
@@ -226,10 +213,9 @@ Conceptual interval structure:
 }
 ```
 
-SBE normalizes this information into the project's price model.
-
-The exact entity name of the user's upstream template sensor remains a
-configuration detail and must not be hardcoded into a card.
+SBE normalizes spot intervals into its price model and applies the existing
+import/export formulas. Historical price intervals come from the Nord Pool
+history action; Recorder remains the source for measured energy statistics.
 
 ------------------------------------------------------------------------
 
@@ -247,8 +233,7 @@ and household cost calculations.
 
 Import price is the actual household purchase price.
 
-It includes the applicable components represented by the user's existing
-price source, such as:
+It includes the configured SBE price components:
 
 -   Nord Pool spot price;
 -   supplier markup;
@@ -298,7 +283,7 @@ Forecast resolution is fixed at:
 ### 9.1 Forecast horizon
 
 The Energy Dashboard future price horizon is explicitly limited to the
-data supplied by the central price sensor:
+data supplied by the configured Nord Pool integration:
 
 ``` text
 today + tomorrow
@@ -408,7 +393,7 @@ SBE shall be able to identify the cheapest available future price
 period.
 
 The result must be derived only from normalized future price data
-available from the central price source.
+available from the Nord Pool runtime.
 
 The calculation must never require price data beyond today + tomorrow.
 

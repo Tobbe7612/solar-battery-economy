@@ -8,6 +8,7 @@ CONST_SOURCE = (INTEGRATION_DIR / "const.py").read_text(encoding="utf-8")
 CONFIG_FLOW_SOURCE = (INTEGRATION_DIR / "config_flow.py").read_text(
     encoding="utf-8"
 )
+STRINGS_SOURCE = (INTEGRATION_DIR / "strings.json").read_text(encoding="utf-8")
 
 
 def test_default_price_thresholds_are_correct():
@@ -76,6 +77,18 @@ def test_config_flow_uses_correct_price_selection_options():
     """Config flow exposes the agreed price selection modes."""
     assert '"value": "consecutive"' in CONFIG_FLOW_SOURCE
     assert '"value": "cheapest_quarters"' in CONFIG_FLOW_SOURCE
+
+
+def test_config_flow_selects_nordpool_config_entry_and_area():
+    assert 'ConfigEntrySelector({"integration": "nordpool"})' in CONFIG_FLOW_SOURCE
+    assert "CONF_NORDPOOL_CONFIG_ENTRY" in CONFIG_FLOW_SOURCE
+    assert "CONF_NORDPOOL_AREA" in CONFIG_FLOW_SOURCE
+    assert "_validate_nordpool_selection" in CONFIG_FLOW_SOURCE
+
+
+def test_price_source_sensor_is_not_part_of_sbe_setup_or_options():
+    assert "CONF_PRICE_SOURCE" not in CONFIG_FLOW_SOURCE
+    assert '"price_source":' not in STRINGS_SOURCE
 
 def _extract_float(const_name: str) -> float:
     """Extract a numeric constant value directly from const.py."""

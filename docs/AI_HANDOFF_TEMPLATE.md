@@ -29,7 +29,8 @@ Solar Battery Economy
 2. **All Energy Dashboard costs use total import price.**
 3. Raw spot remains available in the normalized source model but is not used as the dashboard price basis.
 3. Export is export revenue and remains separate from import cost.
-4. The existing Nord Pool template is immutable and must not be changed.
+4. SBE reads prices directly from the configured Nord Pool integration and
+   applies the established import/export formulas.
 5. Historical dashboard analysis is limited to **maximum 24 hours backwards**.
 6. Known future price data is limited to available **today + tomorrow** Nord Pool data.
 7. No price extrapolation.
@@ -130,14 +131,14 @@ Do **not** start UI implementation yet.
 custom_components/solar_battery_economy/coordinator.py
 custom_components/solar_battery_economy/economy_calculations.py
 custom_components/solar_battery_economy/flow_calculation.py
-custom_components/solar_battery_economy/price_source.py
+custom_components/solar_battery_economy/price_model.py
 custom_components/solar_battery_economy/sensor.py
 custom_components/solar_battery_economy/sensor_base.py
 custom_components/solar_battery_economy/config_flow.py
 custom_components/solar_battery_economy/const.py
 
-tests/test_coordinator_price_source.py
-tests/test_price_source.py
+tests/test_coordinator_nordpool.py
+tests/test_price_model.py
 tests/test_price_classification.py
 tests/test_house_total.py
 tests/test_energy_accumulation.py
@@ -156,11 +157,12 @@ docs/V1.4.0_CODE_AUDIT.md
 
 ## Known documentation cleanup
 
-`price_source.py` contains an outdated docstring reference to `horizon_hours` in `find_cheapest_future_period()`. The function no longer accepts that parameter. Documentation-only cleanup; do not mix it into unrelated functional changes.
+`price_model.py` contains an outdated docstring reference to `horizon_hours` in `find_cheapest_future_period()`. The function no longer accepts that parameter. Documentation-only cleanup; do not mix it into unrelated functional changes.
 
 ## Do not do
 
-- Do not modify the Nord Pool template.
+- Read prices through the configured Nord Pool integration; SBE does not
+  manage the integration's configuration.
 - Do not replace total import price with spot anywhere in the Energy Dashboard.
 - Do not add 96 forecast entities.
 - Do not put business calculations into Lovelace cards.

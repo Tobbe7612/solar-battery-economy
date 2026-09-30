@@ -72,11 +72,14 @@ spot
 → retained raw market-price source data; not used as the dashboard price basis
 ```
 
-## 2.4 Upstream price source
+## 2.4 Upstream price data
 
-The existing Nord Pool template is unchanged.
+SBE selects a configured Nord Pool integration and market area. Its runtime
+fetches current, forecast, and historical market intervals directly.
 
-The dashboard consumes the normalized SBE price model.
+The dashboard consumes the normalized SBE price model. Historical dashboard
+windows are limited to 24 hours; unavailable historical intervals remain
+missing rather than being filled from another sensor.
 
 ------------------------------------------------------------------------
 
@@ -573,7 +576,7 @@ The following decisions are now frozen for FAS 3 V1.
 -   **Total import price is the Energy Dashboard price basis everywhere.**
 -   Raw spot remains part of the normalized source model but is not used as the dashboard price basis or for dashboard statistics.
 -   Export price represents export revenue and is kept separate from cost.
--   The Nord Pool template is unchanged.
+-   Nord Pool integration settings are managed in Home Assistant.
 
 ## 18.2 Historical and future windows
 
@@ -766,7 +769,7 @@ Smart Score                IMPLEMENTED / TESTED / FROZEN
 Consumer analysis          DEFINED / FROZEN
 Cost-period semantics      DEFINED / FROZEN
 Insight categories         DEFINED / FROZEN
-Nord Pool template         LOCKED / UNCHANGED
+Nord Pool integration      CONFIGURED IN HOME ASSISTANT
 
 Next:
 Implementation-aligned documentation and dashboard UI design

@@ -1,5 +1,6 @@
 # coordinator.py
 import logging
+from datetime import timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.core import callback
@@ -22,11 +23,20 @@ from .const import (
     CONF_PRICE_PERIOD_MINUTES,
     CONF_PRICE_SELECTION_MODE,
     CONF_CONSUMERS,
+    CONF_NORDPOOL_CONFIG_ENTRY,
+    CONF_NORDPOOL_AREA,
 )
 from .economy_calculations import calculate_savings, battery_solar_share
-from .price_source import find_cheapest_future_period
-from .price_source import calculate_today_import_price_statistics
-from .price_source import normalize_price_source
+from .price_model import find_cheapest_future_period
+from .price_model import calculate_today_import_price_statistics
+from .price_model import enrich_nordpool_price_intervals
+from .nordpool_runtime import (
+    NORDPOOL_TIMEZONE,
+    NordPoolPriceError,
+    NordPoolPriceCache,
+    async_get_nordpool_price_history,
+    async_get_nordpool_price_model,
+)
 from .analytics import build_statistics_energy_samples_with_price_history
 from .dashboard_data import (
     build_consumer_dashboard_data,
@@ -34,10 +44,8 @@ from .dashboard_data import (
     build_energy_samples_from_statistics,
     build_house_analysis,
     calculate_shared_import_price_median,
-    extract_spot_price_history,
-    extract_import_price_interval_history,
 )
-from .recorder_adapter import async_get_history, async_get_statistics
+from .recorder_adapter import async_get_statistics
 from .recorder_data import clamp_history_window
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,7 +76,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.solar_entity = conf["solar_power"]
         self.grid_entity = conf["grid_power"]
         self.battery_entity = conf["battery_power"]
-        self.price_source_entity = conf["price_source"]
+        self.nordpool_config_entry_id = conf.get(CONF_NORDPOOL_CONFIG_ENTRY)
+        self.nordpool_area = conf.get(CONF_NORDPOOL_AREA)
+        self._nordpool_price_cache = NordPoolPriceCache()
 
         self.price_period_minutes = int(
             conf.get(CONF_PRICE_PERIOD_MINUTES, 15)
@@ -110,6 +120,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             DEFAULT_EXPENSIVE_LIMIT,
         )
         self._last_update = None
+        self._nordpool_price_model = None
+        self._nordpool_price_model_updated = None
+        self._nordpool_price_model_date = None
         self._unsub_listeners = []
         self.install_date = None
         self._battery_split_migrated = False
@@ -162,14 +175,39 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             if entity_id
         ]
 
-        price_history = await async_get_history(
-            self.hass,
-            [self.price_source_entity],
-            start=start,
-            end=end,
-            include_attributes=True,
+        try:
+            direct_spot_history = await async_get_nordpool_price_history(
+                self.hass,
+                config_entry_id=self.nordpool_config_entry_id,
+                area=self.nordpool_area,
+                start=start,
+                end=end,
+                cache=self._nordpool_price_cache,
+            )
+        except NordPoolPriceError as err:
+            _LOGGER.debug(
+                "Nord Pool historical spot prices unavailable: %s",
+                err,
+            )
+            direct_spot_history = []
+
+        direct_import_intervals = enrich_nordpool_price_intervals(
+            direct_spot_history,
+            very_cheap_limit=self.very_cheap_limit,
+            cheap_limit=self.cheap_limit,
+            normal_limit=self.normal_limit,
+            expensive_limit=self.expensive_limit,
         )
-        price_states = price_history.get(self.price_source_entity, [])
+        # Nord Pool is the sole price-history source. Recorder remains the
+        # source for measured energy statistics.
+        price_states = [
+            {
+                "timestamp": item["start"],
+                "state": item["import"],
+                "attributes": {},
+            }
+            for item in direct_import_intervals
+        ]
 
         statistics = await async_get_statistics(
             self.hass,
@@ -249,7 +287,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                         "end": item["end"].isoformat(),
                         "recorded_at": item["recorded_at"].isoformat(),
                     }
-                    for item in extract_spot_price_history(price_states)
+                    for item in direct_spot_history
                 ],
                 "import_intervals": [
                     {
@@ -258,7 +296,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                         "end": item["end"].isoformat(),
                         "recorded_at": item["recorded_at"].isoformat(),
                     }
-                    for item in extract_import_price_interval_history(price_states)
+                    for item in direct_import_intervals
                 ],
             },
             "price": self.data.get("price", {}),
@@ -348,7 +386,6 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             self.solar_entity,
             self.grid_entity,
             self.battery_entity,
-            self.price_source_entity,
         ]
 
         unsub = async_track_state_change_event(
@@ -409,19 +446,39 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
 
             self._last_update = now
 
-            price_state = self.hass.states.get(self.price_source_entity)
+            local_date = dt_util.now().astimezone(NORDPOOL_TIMEZONE).date()
+            should_refresh_prices = (
+                self._nordpool_price_model_updated is None
+                or self._nordpool_price_model_date != local_date
+                or now - self._nordpool_price_model_updated >= timedelta(minutes=15)
+            )
+            if should_refresh_prices:
+                try:
+                    self._nordpool_price_model = await async_get_nordpool_price_model(
+                        self.hass,
+                        now=now,
+                        config_entry_id=self.nordpool_config_entry_id,
+                        area=self.nordpool_area,
+                        cache=self._nordpool_price_cache,
+                        very_cheap_limit=self.very_cheap_limit,
+                        cheap_limit=self.cheap_limit,
+                        normal_limit=self.normal_limit,
+                        expensive_limit=self.expensive_limit,
+                    )
+                except NordPoolPriceError as err:
+                    _LOGGER.warning("Nord Pool prices unavailable: %s", err)
+                    if self._nordpool_price_model is None:
+                        self._nordpool_price_model = {
+                            "current": None,
+                            "forecast": [],
+                        }
+                self._nordpool_price_model_updated = now
+                self._nordpool_price_model_date = local_date
 
-            if price_state is None:
-                price_model = {"current": None, "forecast": []}
-            else:
-                price_model = normalize_price_source(
-                    price_state.attributes,
-                    now=now,
-                    very_cheap_limit=self.very_cheap_limit,
-                    cheap_limit=self.cheap_limit,
-                    normal_limit=self.normal_limit,
-                    expensive_limit=self.expensive_limit,
-                )
+            price_model = self._nordpool_price_model or {
+                "current": None,
+                "forecast": [],
+            }
 
             current_price = price_model["current"]
 
@@ -429,8 +486,8 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 import_price_raw = None
                 export_price_raw = None
             else:
-                import_price_raw = current_price["import"]
-                export_price_raw = current_price["export"]
+                import_price_raw = current_price.get("import")
+                export_price_raw = current_price.get("export")
 
             self.data["price"] = price_model
 
@@ -477,7 +534,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 energy[base_key] = round(energy.get(base_key, 0) + delta_kwh, 6)
 
             if import_price_raw is None or export_price_raw is None:
-                # Price source unavailable this cycle - skip money booking
+                # Nord Pool price unavailable this cycle - skip money booking
                 # entirely rather than treating the energy as free.
                 self.data["price_unavailable_count"] = (
                     self.data.get("price_unavailable_count", 0) + 1

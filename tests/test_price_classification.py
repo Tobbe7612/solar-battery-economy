@@ -4,34 +4,34 @@ from pathlib import Path
 import pytest
 
 
-# Load price_source.py directly so these pure-domain tests do not require
+# Load price_model.py directly so these pure-domain tests do not require
 # the Home Assistant package to be installed in the local test environment.
-PRICE_SOURCE_PATH = (
+PRICE_MODEL_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
     / "solar_battery_economy"
-    / "price_source.py"
+    / "price_model.py"
 )
 
 _spec = importlib.util.spec_from_file_location(
-    "solar_battery_economy_price_source",
-    PRICE_SOURCE_PATH,
+    "solar_battery_economy_price_model",
+    PRICE_MODEL_PATH,
 )
-price_source = importlib.util.module_from_spec(_spec)
+price_model = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
-_spec.loader.exec_module(price_source)
+_spec.loader.exec_module(price_model)
 
 
-CHEAP = price_source.CHEAP
-DEFAULT_CHEAP_LIMIT = price_source.DEFAULT_CHEAP_LIMIT
-DEFAULT_EXPENSIVE_LIMIT = price_source.DEFAULT_EXPENSIVE_LIMIT
-DEFAULT_NORMAL_LIMIT = price_source.DEFAULT_NORMAL_LIMIT
-DEFAULT_VERY_CHEAP_LIMIT = price_source.DEFAULT_VERY_CHEAP_LIMIT
-EXPENSIVE = price_source.EXPENSIVE
-NORMAL = price_source.NORMAL
-VERY_CHEAP = price_source.VERY_CHEAP
-VERY_EXPENSIVE = price_source.VERY_EXPENSIVE
-classify_price = price_source.classify_price
+CHEAP = price_model.CHEAP
+DEFAULT_CHEAP_LIMIT = price_model.DEFAULT_CHEAP_LIMIT
+DEFAULT_EXPENSIVE_LIMIT = price_model.DEFAULT_EXPENSIVE_LIMIT
+DEFAULT_NORMAL_LIMIT = price_model.DEFAULT_NORMAL_LIMIT
+DEFAULT_VERY_CHEAP_LIMIT = price_model.DEFAULT_VERY_CHEAP_LIMIT
+EXPENSIVE = price_model.EXPENSIVE
+NORMAL = price_model.NORMAL
+VERY_CHEAP = price_model.VERY_CHEAP
+VERY_EXPENSIVE = price_model.VERY_EXPENSIVE
+classify_price = price_model.classify_price
 
 
 def test_default_thresholds_are_correct():

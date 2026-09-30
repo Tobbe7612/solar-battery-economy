@@ -521,7 +521,10 @@ class ImportElectricityPriceSensor(EconomySensor):
         if current is None:
             self._value = None
         else:
-            self._value = round(current.get("import", 0), 3)
+            import_price = current.get("import")
+            self._value = (
+                round(import_price, 3) if import_price is not None else None
+            )
 
         self.async_write_ha_state()
 
@@ -554,7 +557,10 @@ class ExportElectricityPriceSensor(EconomySensor):
         if current is None:
             self._value = None
         else:
-            self._value = round(current.get("export", 0), 3)
+            export_price = current.get("export")
+            self._value = (
+                round(export_price, 3) if export_price is not None else None
+            )
 
         self.async_write_ha_state()
 

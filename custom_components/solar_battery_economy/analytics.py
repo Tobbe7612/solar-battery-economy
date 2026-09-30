@@ -498,13 +498,13 @@ def build_statistics_energy_samples_with_price_history(
     energy_statistics: list[dict[str, Any]],
     price_history: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Value 5-minute energy changes using Recorder price state history.
+    """Value Recorder energy changes using normalized price interval states.
 
     Energy statistics provide the measured cumulative change for each bucket.
-    The price sensor is a state-history source, so no price statistics entity
-    is required. A bucket is included only when one price state covers the
-    whole bucket; otherwise it is omitted rather than splitting or estimating
-    the energy change.
+    Nord Pool intervals are represented as timestamped total-import-price
+    states. A bucket is included only when one price state covers the whole
+    bucket; otherwise it is omitted rather than splitting or estimating the
+    energy change.
     """
     prices = _timestamped_states(price_history)
     if not prices:
