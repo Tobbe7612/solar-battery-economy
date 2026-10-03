@@ -68,6 +68,38 @@ def test_dashboard_builder_does_not_trigger_entity_updates_or_use_template_price
     assert "sensor.nord_pool_se3_aktuellt_pris" not in source
 
 
+def test_dashboard_subscriber_lifecycle_uses_one_shared_15_minute_job():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+
+    assert "self._dashboard_subscribers = {}" in source
+    assert "is_first_subscriber = not self._dashboard_subscribers" in source
+    assert "if is_first_subscriber:" in source
+    assert "self._start_dashboard_refresh()" in source
+    assert "async_track_time_interval(" in source
+    assert "timedelta(minutes=15)" in source
+    assert "if self._dashboard_refresh_unsub is not None:" in source
+    assert "self._dashboard_refresh_unsub()" in source
+
+
+def test_dashboard_subscribers_share_payload_build_and_receive_refreshes():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+
+    assert "self._dashboard_payload_task = None" in source
+    assert "self._dashboard_latest_payload = None" in source
+    assert "await self._async_get_shared_dashboard_payload()" in source
+    assert "self.async_build_dashboard_payload(" in source
+    assert "subscriber_callback(payload)" in source
+    assert "async_unsubscribe_dashboard(self, subscriber_id)" in source
+    assert "if not self._dashboard_subscribers:" in source
+
+
+def test_dashboard_refresh_stops_on_home_assistant_shutdown():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    assert "EVENT_HOMEASSISTANT_STOP" in source
+    assert "self._handle_home_assistant_stop" in source
+    assert "self._stop_dashboard_refresh()" in source
+
+
 def test_dashboard_extended_recorder_request_does_not_remove_analysis_clamp():
     source = _dashboard_method_source()
 

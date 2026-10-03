@@ -1,9 +1,13 @@
 # coordinator.py
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.core import callback
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
+from homeassistant.core import EVENT_HOMEASSISTANT_STOP, callback
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers import entity_registry as er
@@ -129,6 +133,12 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self._nordpool_price_model_updated = None
         self._nordpool_price_model_date = None
         self._unsub_listeners = []
+        self._dashboard_subscribers = {}
+        self._dashboard_subscription_cleanup = {}
+        self._dashboard_refresh_unsub = None
+        self._dashboard_shutdown_unsub = None
+        self._dashboard_payload_task = None
+        self._dashboard_latest_payload = None
         self.install_date = None
         self._battery_split_migrated = False
 
@@ -416,6 +426,120 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             "consumers": consumers,
             "insights": build_deterministic_insights(house, consumers),
         }
+
+    async def async_subscribe_dashboard(
+        self,
+        subscriber_id,
+        callback_fn,
+        cleanup_fn=None,
+    ):
+        """Register one websocket client and return the latest full payload."""
+        is_first_subscriber = not self._dashboard_subscribers
+        self._dashboard_subscribers[subscriber_id] = callback_fn
+        if cleanup_fn is not None:
+            self._dashboard_subscription_cleanup[subscriber_id] = cleanup_fn
+        if is_first_subscriber:
+            self._start_dashboard_refresh()
+
+        if (
+            self._dashboard_latest_payload is None
+            or self._dashboard_payload_task is not None
+        ):
+            return await self._async_get_shared_dashboard_payload()
+        return self._dashboard_latest_payload
+
+    @callback
+    def async_unsubscribe_dashboard(self, subscriber_id) -> None:
+        """Remove one websocket client and stop shared jobs when none remain."""
+        self._dashboard_subscribers.pop(subscriber_id, None)
+        self._dashboard_subscription_cleanup.pop(subscriber_id, None)
+        if not self._dashboard_subscribers:
+            self._stop_dashboard_refresh()
+
+    @callback
+    def _start_dashboard_refresh(self) -> None:
+        """Start exactly one refresh interval while subscribers are active."""
+        if self._dashboard_refresh_unsub is not None:
+            return
+        self._dashboard_refresh_unsub = async_track_time_interval(
+            self.hass,
+            self._handle_dashboard_refresh,
+            timedelta(minutes=15),
+        )
+        self._dashboard_shutdown_unsub = self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP,
+            self._handle_home_assistant_stop,
+        )
+
+    @callback
+    def _handle_dashboard_refresh(self, now) -> None:
+        """Queue one full payload build and broadcast it to all subscribers."""
+        self.hass.async_create_task(self._async_refresh_dashboard())
+
+    async def _async_refresh_dashboard(self) -> None:
+        if not self._dashboard_subscribers:
+            return
+        try:
+            payload = await self._async_get_shared_dashboard_payload()
+        except Exception:
+            _LOGGER.exception("Unable to refresh Solar Battery Economy dashboard")
+            return
+
+        for subscriber_callback in tuple(self._dashboard_subscribers.values()):
+            try:
+                subscriber_callback(payload)
+            except Exception:
+                _LOGGER.exception("Unable to send dashboard update to subscriber")
+
+    async def _async_get_shared_dashboard_payload(self):
+        """Build once when concurrent subscribers/ticks need a payload."""
+        task = self._dashboard_payload_task
+        if task is None:
+            end = dt_util.utcnow()
+            self._dashboard_latest_payload = None
+            task = self.hass.async_create_task(
+                self.async_build_dashboard_payload(
+                    start=end - timedelta(hours=24),
+                    end=end,
+                )
+            )
+            self._dashboard_payload_task = task
+        try:
+            payload = await asyncio.shield(task)
+        finally:
+            if self._dashboard_payload_task is task and task.done():
+                self._dashboard_payload_task = None
+        self._dashboard_latest_payload = payload
+        return payload
+
+    @callback
+    def _handle_home_assistant_stop(self, event) -> None:
+        self._stop_dashboard_refresh()
+
+    @callback
+    def async_shutdown_dashboard(self) -> None:
+        """Release dashboard subscriptions during config-entry unload."""
+        self._stop_dashboard_refresh()
+
+    @callback
+    def _stop_dashboard_refresh(self) -> None:
+        """Cancel interval/listeners and release the shared payload state."""
+        if self._dashboard_refresh_unsub is not None:
+            self._dashboard_refresh_unsub()
+            self._dashboard_refresh_unsub = None
+        if self._dashboard_shutdown_unsub is not None:
+            self._dashboard_shutdown_unsub()
+            self._dashboard_shutdown_unsub = None
+        task = self._dashboard_payload_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._dashboard_payload_task = None
+        self._dashboard_latest_payload = None
+        self._dashboard_subscribers.clear()
+        cleanup_callbacks = tuple(self._dashboard_subscription_cleanup.values())
+        self._dashboard_subscription_cleanup.clear()
+        for cleanup_callback in cleanup_callbacks:
+            cleanup_callback()
 
     # ---------------------------------------------------------
     # STORAGE RESTORE

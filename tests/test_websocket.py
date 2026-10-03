@@ -20,6 +20,23 @@ def test_dashboard_websocket_command_is_registered_and_bounded():
     assert 'async_register_command(hass, ws_get_dashboard_data)' in source
 
 
+def test_dashboard_subscription_is_registered_and_uses_connection_cleanup():
+    source = MODULE_PATH.read_text(encoding="utf-8")
+
+    assert 'WS_TYPE_SUBSCRIBE_DASHBOARD_DATA = f"{DOMAIN}/subscribe_dashboard_data"' in source
+    assert 'connection.subscriptions[msg["id"]] = _unsubscribe_dashboard' in source
+    assert "connection.send_event(msg[\"id\"], payload)" in source
+    assert "await coordinator.async_subscribe_dashboard(" in source
+    assert "async_register_command(hass, ws_subscribe_dashboard_data)" in source
+
+
+def test_initial_dashboard_request_response_stays_registered():
+    source = MODULE_PATH.read_text(encoding="utf-8")
+    assert "async def ws_get_dashboard_data(" in source
+    assert "await coordinator.async_get_dashboard_data(start=start, end=end)" in source
+    assert "async_register_command(hass, ws_get_dashboard_data)" in source
+
+
 def test_integration_registers_websocket_commands_in_global_setup():
     source = (
         MODULE_PATH.parent / "__init__.py"
@@ -27,6 +44,11 @@ def test_integration_registers_websocket_commands_in_global_setup():
 
     assert "async def async_setup(hass: HomeAssistant, config: dict) -> bool:" in source
     assert "async_register_websocket_commands(hass)" in source
+
+
+def test_config_entry_unload_stops_dashboard_subscription_lifecycle():
+    source = (MODULE_PATH.parent / "__init__.py").read_text(encoding="utf-8")
+    assert "coordinator.async_shutdown_dashboard()" in source
 
 
 def test_coordinator_imports_dashboard_energy_sample_builder():

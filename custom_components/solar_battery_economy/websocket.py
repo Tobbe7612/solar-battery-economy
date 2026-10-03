@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 
 WS_TYPE_GET_DASHBOARD_DATA = f"{DOMAIN}/get_dashboard_data"
+WS_TYPE_SUBSCRIBE_DASHBOARD_DATA = f"{DOMAIN}/subscribe_dashboard_data"
 
 
 @websocket_api.websocket_command(
@@ -56,7 +57,60 @@ async def ws_get_dashboard_data(
     connection.send_result(msg["id"], data)
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_TYPE_SUBSCRIBE_DASHBOARD_DATA,
+        vol.Required("config_entry_id"): cv.string,
+    }
+)
+@websocket_api.async_response
+async def ws_subscribe_dashboard_data(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to complete dashboard payloads for one config entry."""
+    coordinator = hass.data.get(DOMAIN, {}).get(msg["config_entry_id"])
+    if coordinator is None:
+        connection.send_error(
+            msg["id"],
+            "config_entry_not_found",
+            "Solar Battery Economy config entry not found",
+        )
+        return
+
+    subscriber_id = (id(connection), msg["id"])
+
+    @callback
+    def _send_dashboard_event(payload: dict[str, Any]) -> None:
+        connection.send_event(msg["id"], payload)
+
+    @callback
+    def _unsubscribe_dashboard() -> None:
+        coordinator.async_unsubscribe_dashboard(subscriber_id)
+
+    @callback
+    def _remove_connection_subscription() -> None:
+        connection.subscriptions.pop(msg["id"], None)
+
+    connection.subscriptions[msg["id"]] = _unsubscribe_dashboard
+    try:
+        payload = await coordinator.async_subscribe_dashboard(
+            subscriber_id,
+            _send_dashboard_event,
+            _remove_connection_subscription,
+        )
+    except Exception as err:  # pragma: no cover - defensive runtime boundary
+        connection.subscriptions.pop(msg["id"], None)
+        _unsubscribe_dashboard()
+        connection.send_error(msg["id"], "dashboard_data_failed", str(err))
+        return
+
+    connection.send_result(msg["id"], payload)
+
+
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register Solar Battery Economy WebSocket commands."""
     websocket_api.async_register_command(hass, ws_get_dashboard_data)
+    websocket_api.async_register_command(hass, ws_subscribe_dashboard_data)
