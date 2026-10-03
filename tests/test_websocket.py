@@ -30,11 +30,34 @@ def test_dashboard_subscription_is_registered_and_uses_connection_cleanup():
     assert "async_register_command(hass, ws_subscribe_dashboard_data)" in source
 
 
+def test_subscription_sends_initial_payload_as_event_after_empty_ack():
+    source = MODULE_PATH.read_text(encoding="utf-8")
+
+    assert 'connection.send_result(msg["id"])' in source
+    assert "_send_dashboard_event(payload)" in source
+    assert 'connection.send_result(msg["id"], payload)' not in source
+    assert 'connection.send_event(msg["id"], payload)' in source
+    assert source.index('connection.send_result(msg["id"])') < source.index(
+        "_send_dashboard_event(payload)"
+    )
+
+
+def test_each_subscriber_gets_initial_payload_through_its_registered_callback():
+    source = MODULE_PATH.read_text(encoding="utf-8")
+
+    assert "subscriber_id = (id(connection), msg[\"id\"])" in source
+    assert "connection.subscriptions[msg[\"id\"]] = _unsubscribe_dashboard" in source
+    assert "await coordinator.async_subscribe_dashboard(" in source
+    assert "_send_dashboard_event," in source
+    assert "_send_dashboard_event(payload)" in source
+
+
 def test_initial_dashboard_request_response_stays_registered():
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "async def ws_get_dashboard_data(" in source
     assert "await coordinator.async_get_dashboard_data(start=start, end=end)" in source
     assert "async_register_command(hass, ws_get_dashboard_data)" in source
+    assert 'connection.send_result(msg["id"], data)' in source
 
 
 def test_integration_registers_websocket_commands_in_global_setup():

@@ -106,7 +106,8 @@ async def ws_subscribe_dashboard_data(
         connection.send_error(msg["id"], "dashboard_data_failed", str(err))
         return
 
-    connection.send_result(msg["id"], payload)
+    connection.send_result(msg["id"])
+    _send_dashboard_event(payload)
 
 
 @callback
