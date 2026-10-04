@@ -22,6 +22,16 @@ from .analytics import (
 from .recorder_data import normalize_datetime, stat_end, stat_start
 
 
+ENERGY_FLOW_KEYS = (
+    "solar_house",
+    "solar_battery",
+    "solar_export",
+    "grid_battery",
+    "battery_house",
+    "battery_grid",
+)
+
+
 def select_price_intervals_window(
     intervals: list[dict[str, Any]],
     *,
@@ -69,6 +79,100 @@ def build_energy_samples_from_statistics(
         )
     result.sort(key=lambda item: item["start"])
     return result
+
+
+def _sum_energy_statistics_in_window(
+    statistics: list[dict[str, Any]],
+    *,
+    start: datetime,
+    end: datetime,
+) -> float | None:
+    """Sum complete Recorder change samples in a half-open time window."""
+    start = normalize_datetime(start)
+    end = normalize_datetime(end)
+    samples = build_energy_samples_from_statistics(statistics)
+    values = [
+        sample["energy_kwh"]
+        for sample in samples
+        if sample["start"] >= start
+        and sample["start"] < end
+        and sample["end"] <= end
+    ]
+    if not values:
+        return None
+    return round(sum(values), 6)
+
+
+def build_periodized_energy_data(
+    statistics_by_entity: dict[str, list[dict[str, Any]]],
+    entity_ids: dict[str, str | None],
+    *,
+    yesterday_start: datetime,
+    today_start: datetime,
+    now: datetime,
+) -> dict[str, Any]:
+    """Build yesterday/today solar and battery energy from Recorder changes."""
+    def period_values(start: datetime, end: datetime) -> dict[str, float | None]:
+        return {
+            key: (
+                _sum_energy_statistics_in_window(
+                    statistics_by_entity.get(entity_id, []),
+                    start=start,
+                    end=end,
+                )
+                if entity_id is not None
+                else None
+            )
+            for key in ENERGY_FLOW_KEYS
+            for entity_id in (entity_ids.get(key),)
+        }
+
+    def total(*values: float | None) -> float | None:
+        if any(value is None for value in values):
+            return None
+        return round(sum(value for value in values if value is not None), 6)
+
+    def view(values: dict[str, float | None]) -> dict[str, Any]:
+        solar_house = values["solar_house"]
+        solar_battery = values["solar_battery"]
+        solar_export = values["solar_export"]
+        grid_battery = values["grid_battery"]
+        battery_house = values["battery_house"]
+        battery_grid = values["battery_grid"]
+        return {
+            "solar": {
+                "total_kwh": total(solar_house, solar_battery, solar_export),
+                "to_house_kwh": solar_house,
+                "to_battery_kwh": solar_battery,
+                "to_grid_kwh": solar_export,
+            },
+            "battery": {
+                "charged_kwh": total(solar_battery, grid_battery),
+                "discharged_kwh": total(battery_house, battery_grid),
+                "to_house_kwh": battery_house,
+                "to_grid_kwh": battery_grid,
+            },
+        }
+
+    tomorrow = {
+        "solar": {
+            "total_kwh": None,
+            "to_house_kwh": None,
+            "to_battery_kwh": None,
+            "to_grid_kwh": None,
+        },
+        "battery": {
+            "charged_kwh": None,
+            "discharged_kwh": None,
+            "to_house_kwh": None,
+            "to_grid_kwh": None,
+        },
+    }
+    return {
+        "yesterday": view(period_values(yesterday_start, today_start)),
+        "today": view(period_values(today_start, now)),
+        "tomorrow": tomorrow,
+    }
 
 
 def extract_import_price_history(

@@ -1,4 +1,5 @@
 import ast
+from types import SimpleNamespace
 from pathlib import Path
 
 
@@ -106,12 +107,72 @@ def test_dashboard_extended_recorder_request_does_not_remove_analysis_clamp():
     assert "start=series_start" in source
     assert "end=series_end" in source
     assert "timeseries_energy_ids = [" in source
-    assert "for entity_id in [house_total_entity, *consumer_entities]" in source
+    assert "*energy_flow_entities.values()" in source
+    assert "*consumer_entities" in source
     assert "enforce_max_history=False" in source
     assert "analysis_statistics = await async_get_statistics(" in source
     assert "start=analysis_start" in source
     assert "end=analysis_end" in source
     assert "select_price_intervals_window(" in source
+
+
+def test_periodized_energy_uses_registry_lookup_and_existing_recorder_request():
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    dashboard_source = _dashboard_method_source()
+
+    assert 'unique_id = f"{DOMAIN}_{self.entry.entry_id}_energy_{key}"' in source
+    assert "registry.async_get_entity_id(\"sensor\", DOMAIN, unique_id)" in source
+    assert "energy_flow_entities = {" in dashboard_source
+    assert "for key in ENERGY_FLOW_KEYS" in dashboard_source
+    assert "build_periodized_energy_data(" in dashboard_source
+    assert '"energy": energy' in dashboard_source
+    assert '"tomorrow": tomorrow' in Path(
+        COORDINATOR_PATH.parent / "dashboard_data.py"
+    ).read_text(encoding="utf-8")
+
+    # Energy statistics use the existing window ending at now. No future
+    # boundary or tomorrow window is queried from Recorder.
+    assert "end=series_end" in dashboard_source
+    assert "tomorrow_start" not in dashboard_source
+    assert "tomorrow_end" not in dashboard_source
+
+
+def test_energy_entity_lookup_accepts_custom_entity_id_prefix():
+    expected_unique_id = "solar_battery_economy_entry_1_energy_solar_house"
+    custom_entity_id = "sensor.custom_prefix_energy_solar_house"
+
+    class Registry:
+        def async_get_entity_id(self, domain, platform, unique_id):
+            assert (domain, platform, unique_id) == (
+                "sensor",
+                "solar_battery_economy",
+                expected_unique_id,
+            )
+            return custom_entity_id
+
+    source = COORDINATOR_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    class_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "SolarBatteryEconomyCoordinator"
+    )
+    method_node = next(
+        node for node in class_node.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_get_energy_entity_id"
+    )
+    namespace = {
+        "DOMAIN": "solar_battery_economy",
+        "er": SimpleNamespace(async_get=lambda hass: Registry()),
+    }
+    exec(compile(ast.Module(body=[method_node], type_ignores=[]), str(COORDINATOR_PATH), "exec"), namespace)
+
+    fake_self = SimpleNamespace(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry_1"),
+    )
+    assert namespace["_get_energy_entity_id"](fake_self, "solar_house") == custom_entity_id
 
 
 def test_analysis_and_consumer_metrics_use_only_24h_samples():

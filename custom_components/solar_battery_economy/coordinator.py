@@ -43,9 +43,11 @@ from .nordpool_runtime import (
 )
 from .analytics import build_statistics_energy_samples_with_price_history
 from .dashboard_data import (
+    ENERGY_FLOW_KEYS,
     build_consumer_dashboard_data,
     build_deterministic_insights,
     build_energy_samples_from_statistics,
+    build_periodized_energy_data,
     build_house_analysis,
     calculate_shared_import_price_median,
     select_price_intervals_window,
@@ -216,6 +218,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         house_total_entity = self._get_energy_entity_id("house_total")
         grid_house_entity = self._get_energy_entity_id("grid_house")
         battery_house_entity = self._get_energy_entity_id("battery_house")
+        energy_flow_entities = {
+            key: self._get_energy_entity_id(key) for key in ENERGY_FLOW_KEYS
+        }
         consumer_entities = list(self.consumer_entities)
 
         analysis_energy_ids = [
@@ -230,7 +235,11 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         ]
         timeseries_energy_ids = [
             entity_id
-            for entity_id in [house_total_entity, *consumer_entities]
+            for entity_id in [
+                house_total_entity,
+                *energy_flow_entities.values(),
+                *consumer_entities,
+            ]
             if entity_id
         ]
 
@@ -285,6 +294,13 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         )
 
         house_total_stats = statistics.get(house_total_entity, []) if house_total_entity else []
+        energy = build_periodized_energy_data(
+            statistics,
+            energy_flow_entities,
+            yesterday_start=calendar.yesterday_start,
+            today_start=calendar.today_start,
+            now=analysis_end,
+        )
         analysis_house_total_stats = analysis_statistics.get(house_total_entity, []) if house_total_entity else []
         analysis_grid_house_stats = analysis_statistics.get(grid_house_entity, []) if grid_house_entity else []
         analysis_battery_house_stats = analysis_statistics.get(battery_house_entity, []) if battery_house_entity else []
@@ -389,6 +405,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 ),
             },
             "house": house,
+            "energy": energy,
             "house_history": build_energy_samples_from_statistics(
                 house_total_stats
             ),
