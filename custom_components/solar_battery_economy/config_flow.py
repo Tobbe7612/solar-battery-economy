@@ -27,6 +27,7 @@ from .const import (
     CONF_CHEAP_LIMIT,
     CONF_NORMAL_LIMIT,
     CONF_EXPENSIVE_LIMIT,
+    get_effective_config,
 )
 
 
@@ -41,50 +42,204 @@ class SolarBatteryEconomyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return SolarBatteryEconomyOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial setup step."""
+        """Start the initial setup wizard."""
+        self._flow_data = {}
+        return await self.async_step_energy_system()
+
+    async def async_step_energy_system(self, user_input=None):
+        """Collect the three power entities."""
+        fields = (CONF_SOLAR_POWER, CONF_GRID_POWER, CONF_BATTERY_POWER)
+        schema = _schema_fields(self._flow_data, self.hass, fields)
         errors = {}
 
         if user_input is not None:
-            # Prevent duplicate configuration.
-            user_input = dict(user_input)
+            values = schema(dict(user_input))
+            self._flow_data.update(values)
+            sensors = {
+                values[CONF_SOLAR_POWER],
+                values[CONF_GRID_POWER],
+                values[CONF_BATTERY_POWER],
+            }
+            if len(sensors) < 3:
+                errors["base"] = "duplicate_power_sensors"
+            else:
+                return await self.async_step_nordpool_entry()
 
-            if CONF_PRICE_PERIOD_MINUTES in user_input:
-                user_input[CONF_PRICE_PERIOD_MINUTES] = int(
-                    user_input[CONF_PRICE_PERIOD_MINUTES]
+        return self.async_show_form(
+            step_id="energy_system",
+            data_schema=_schema_fields(self._flow_data, self.hass, fields),
+            errors=errors,
+        )
+
+    async def async_step_nordpool_entry(self, user_input=None):
+        """Select or automatically preselect a configured Nord Pool entry."""
+        entries = self.hass.config_entries.async_entries("nordpool")
+        default_entry = self._flow_data.get(CONF_NORDPOOL_CONFIG_ENTRY)
+        if default_entry is None and len(entries) == 1:
+            default_entry = entries[0].entry_id
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_NORDPOOL_CONFIG_ENTRY, default=default_entry
+                ): ConfigEntrySelector({"integration": "nordpool"})
+            }
+        )
+        errors = {}
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            entry = self.hass.config_entries.async_get_entry(
+                values.get(CONF_NORDPOOL_CONFIG_ENTRY)
+            )
+            if entry is None or entry.domain != "nordpool":
+                errors["base"] = "invalid_nordpool_entry"
+            else:
+                self._flow_data.update(values)
+                return await self.async_step_nordpool_area()
+
+        return self.async_show_form(
+            step_id="nordpool_entry", data_schema=schema, errors=errors
+        )
+
+    async def async_step_nordpool_area(self, user_input=None):
+        """Select an area belonging to the chosen Nord Pool entry."""
+        config_entry_id = self._flow_data.get(CONF_NORDPOOL_CONFIG_ENTRY)
+        entry = self.hass.config_entries.async_get_entry(config_entry_id)
+        areas = (
+            sorted(set(entry.data.get("areas", [])))
+            if entry is not None and entry.domain == "nordpool"
+            else []
+        )
+        default_area = self._flow_data.get(CONF_NORDPOOL_AREA)
+        if default_area is None and len(areas) == 1:
+            default_area = areas[0]
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_NORDPOOL_AREA, default=default_area): selector(
+                    {"select": {"options": areas, "multiple": False}}
                 )
+            }
+        )
+        errors = {}
 
-            nordpool_error = _validate_nordpool_selection(self.hass, user_input)
-            if nordpool_error is not None:
-                errors["base"] = nordpool_error
+        if user_input is not None:
+            values = schema(dict(user_input))
+            selection = {
+                CONF_NORDPOOL_CONFIG_ENTRY: config_entry_id,
+                CONF_NORDPOOL_AREA: values.get(CONF_NORDPOOL_AREA),
+            }
+            error = _validate_nordpool_selection(self.hass, selection)
+            if error is not None:
+                errors["base"] = error
+            else:
+                self._flow_data.update(values)
+                return await self.async_step_prices()
+
+        return self.async_show_form(
+            step_id="nordpool_area", data_schema=schema, errors=errors
+        )
+
+    async def async_step_prices(self, user_input=None):
+        """Collect price period, selection method, and market currency."""
+        fields = (
+            CONF_PRICE_PERIOD_MINUTES,
+            CONF_PRICE_SELECTION_MODE,
+            "currency",
+        )
+        schema = _schema_fields(self._flow_data, self.hass, fields)
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            if CONF_PRICE_PERIOD_MINUTES in values:
+                values[CONF_PRICE_PERIOD_MINUTES] = int(
+                    values[CONF_PRICE_PERIOD_MINUTES]
+                )
+            self._flow_data.update(values)
+            return await self.async_step_features()
+
+        return self.async_show_form(step_id="prices", data_schema=schema)
+
+    async def async_step_features(self, user_input=None):
+        """Ask whether to configure energy consumers in a separate step."""
+        configure_consumers_key = "_configure_consumers"
+        schema = vol.Schema(
+            {
+                vol.Required(configure_consumers_key, default=False): selector(
+                    {"boolean": {}}
+                )
+            }
+        )
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            if values.get(configure_consumers_key, False):
+                return await self.async_step_consumers()
+            self._flow_data[CONF_CONSUMERS] = []
+            return await self.async_step_economy()
+
+        return self.async_show_form(step_id="features", data_schema=schema)
+
+    async def async_step_consumers(self, user_input=None):
+        """Collect the existing list of energy consumer entities."""
+        schema = _schema_fields(self._flow_data, self.hass, (CONF_CONSUMERS,))
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            consumers = values.get(CONF_CONSUMERS, [])
+            if isinstance(consumers, str):
+                consumers = [consumers]
+            self._flow_data[CONF_CONSUMERS] = list(consumers or [])
+            return await self.async_step_economy()
+
+        return self.async_show_form(step_id="consumers", data_schema=schema)
+
+    async def async_step_economy(self, user_input=None):
+        """Collect price classification limits and investment values."""
+        fields = (
+            CONF_VERY_CHEAP_LIMIT,
+            CONF_CHEAP_LIMIT,
+            CONF_NORMAL_LIMIT,
+            CONF_EXPENSIVE_LIMIT,
+            CONF_INVESTMENT,
+            "solar_investment",
+            "battery_investment",
+            "co2_factor",
+        )
+        schema = _schema_fields(self._flow_data, self.hass, fields)
+        errors = {}
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            candidate = {**self._flow_data, **values}
+            threshold_error = _validate_price_thresholds(candidate)
+            self._flow_data.update(values)
+            if threshold_error is not None:
+                errors["base"] = threshold_error
+            else:
+                return await self.async_step_advanced()
+
+        return self.async_show_form(
+            step_id="economy",
+            data_schema=_schema_fields(self._flow_data, self.hass, fields),
+            errors=errors,
+        )
+
+    async def async_step_advanced(self, user_input=None):
+        """Collect the existing SBE-specific advanced sensor option."""
+        schema = _schema_fields(self._flow_data, self.hass, ("advanced_mode",))
+
+        if user_input is not None:
+            values = schema(dict(user_input))
+            self._flow_data.update(values)
+
             unique_id = DOMAIN
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
-            # Basic validation: prevent identical power sensors.
-            sensors = {
-                user_input[CONF_SOLAR_POWER],
-                user_input[CONF_GRID_POWER],
-                user_input[CONF_BATTERY_POWER],
-            }
+            config = _normalize_initial_config(self._flow_data)
+            return self.async_create_entry(title=DEFAULT_NAME, data=config)
 
-            if nordpool_error is None and len(sensors) < 3:
-                errors["base"] = "duplicate_power_sensors"
-            elif nordpool_error is None:
-                threshold_error = _validate_price_thresholds(user_input)
-
-                if threshold_error is not None:
-                    errors["base"] = threshold_error
-                else:
-                    return self.async_create_entry(
-                        title=DEFAULT_NAME,
-                        data=user_input,
-                    )
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=_build_schema(hass=self.hass),
-            errors=errors,
-        )
+        return self.async_show_form(step_id="advanced", data_schema=schema)
 
 
 class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
@@ -92,49 +247,162 @@ class SolarBatteryEconomyOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, entry):
         self.entry = entry
+        self._changes = {}
 
     async def async_step_init(self, user_input=None):
-        """Handle options update."""
-        errors = {}
+        """Start the categorized options editor."""
+        self._changes = {}
+        return await self.async_step_energy_system()
 
-        if user_input is not None:
-            user_input = dict(user_input)
+    def _effective(self):
+        return {**get_effective_config(self.entry), **self._changes}
 
-            if CONF_PRICE_PERIOD_MINUTES in user_input:
-                user_input[CONF_PRICE_PERIOD_MINUTES] = int(
-                    user_input[CONF_PRICE_PERIOD_MINUTES]
-                )
-
-            nordpool_error = _validate_nordpool_selection(self.hass, user_input)
-            if nordpool_error is not None:
-                errors["base"] = nordpool_error
-
-            threshold_error = _validate_price_thresholds(user_input)
-
-            if nordpool_error is not None:
-                errors["base"] = nordpool_error
-            elif threshold_error is not None:
-                errors["base"] = threshold_error
-            else:
-                # Save options first. The entry will then be reloaded using
-                # the newly saved configuration.
-                return self.async_create_entry(
-                    title="",
-                    data=user_input,
-                )
-
-        defaults = self.entry.options or self.entry.data
-
+    def _form(self, step_id, fields, errors=None):
         return self.async_show_form(
-            step_id="init",
-            data_schema=_build_schema(defaults, hass=self.hass),
-            errors=errors,
+            step_id=step_id,
+            data_schema=_schema_fields(self._effective(), self.hass, fields),
+            errors=errors or {},
         )
+
+    async def async_step_energy_system(self, user_input=None):
+        fields = (CONF_SOLAR_POWER, CONF_GRID_POWER, CONF_BATTERY_POWER)
+        if user_input is not None:
+            values = _schema_fields(self._effective(), self.hass, fields)(dict(user_input))
+            self._changes.update(values)
+            candidate = {**self._effective(), **values}
+            if len({candidate.get(key) for key in fields}) < 3:
+                return self._form("energy_system", fields, {"base": "duplicate_power_sensors"})
+            return await self.async_step_nordpool_entry()
+        return self._form("energy_system", fields)
+
+    async def async_step_nordpool_entry(self, user_input=None):
+        fields = (CONF_NORDPOOL_CONFIG_ENTRY,)
+        if user_input is not None:
+            values = dict(user_input)
+            selected = self.hass.config_entries.async_get_entry(values.get(CONF_NORDPOOL_CONFIG_ENTRY))
+            if selected is None or selected.domain != "nordpool":
+                return self._form("nordpool_entry", fields, {"base": "invalid_nordpool_entry"})
+            self._changes.update(values)
+            return await self.async_step_nordpool_area()
+        defaults = self._effective()
+        schema = _schema_fields(defaults, self.hass, fields)
+        # Keep the existing one-entry autodetection behavior.
+        return self.async_show_form(step_id="nordpool_entry", data_schema=schema)
+
+    async def async_step_nordpool_area(self, user_input=None):
+        effective = self._effective()
+        entry_id = effective.get(CONF_NORDPOOL_CONFIG_ENTRY)
+        selected = self.hass.config_entries.async_get_entry(entry_id)
+        areas = sorted(set(selected.data.get("areas", []))) if selected and selected.domain == "nordpool" else []
+        old_area = effective.get(CONF_NORDPOOL_AREA)
+        area_default = old_area if old_area in areas else (areas[0] if len(areas) == 1 else None)
+        schema = vol.Schema({
+            vol.Required(CONF_NORDPOOL_AREA, default=area_default): selector(
+                {"select": {"options": areas, "multiple": False}}
+            )
+        })
+        if user_input is not None:
+            values = schema(dict(user_input))
+            candidate = {**effective, **values}
+            error = _validate_nordpool_selection(self.hass, candidate)
+            if error:
+                return self.async_show_form(step_id="nordpool_area", data_schema=schema, errors={"base": error})
+            self._changes.update(values)
+            return await self.async_step_prices()
+        return self.async_show_form(step_id="nordpool_area", data_schema=schema)
+
+    async def async_step_prices(self, user_input=None):
+        fields = (CONF_PRICE_PERIOD_MINUTES, CONF_PRICE_SELECTION_MODE, "currency")
+        if user_input is not None:
+            values = _schema_fields(self._effective(), self.hass, fields)(dict(user_input))
+            if CONF_PRICE_PERIOD_MINUTES in values:
+                values[CONF_PRICE_PERIOD_MINUTES] = int(values[CONF_PRICE_PERIOD_MINUTES])
+            self._changes.update(values)
+            return await self.async_step_features()
+        return self._form("prices", fields)
+
+    async def async_step_features(self, user_input=None):
+        key = "_configure_consumers"
+        schema = vol.Schema({vol.Required(key, default=bool(self._effective().get(CONF_CONSUMERS, []))): selector({"boolean": {}})})
+        if user_input is not None:
+            values = schema(dict(user_input))
+            if values.get(key):
+                return await self.async_step_consumers()
+            self._changes[CONF_CONSUMERS] = []
+            return await self.async_step_economy()
+        return self.async_show_form(step_id="features", data_schema=schema)
+
+    async def async_step_consumers(self, user_input=None):
+        fields = (CONF_CONSUMERS,)
+        if user_input is not None:
+            values = _schema_fields(self._effective(), self.hass, fields)(dict(user_input))
+            consumers = values.get(CONF_CONSUMERS, [])
+            self._changes[CONF_CONSUMERS] = [consumers] if isinstance(consumers, str) else list(consumers or [])
+            return await self.async_step_economy()
+        return self._form("consumers", fields)
+
+    async def async_step_economy(self, user_input=None):
+        fields = (CONF_VERY_CHEAP_LIMIT, CONF_CHEAP_LIMIT, CONF_NORMAL_LIMIT,
+                  CONF_EXPENSIVE_LIMIT, CONF_INVESTMENT, "solar_investment",
+                  "battery_investment", "co2_factor")
+        if user_input is not None:
+            values = _schema_fields(self._effective(), self.hass, fields)(dict(user_input))
+            candidate = {**self._effective(), **values}
+            error = _validate_price_thresholds(candidate)
+            self._changes.update(values)
+            if error:
+                return self._form("economy", fields, {"base": error})
+            return await self.async_step_advanced()
+        return self._form("economy", fields)
+
+    async def async_step_advanced(self, user_input=None):
+        fields = ("advanced_mode",)
+        if user_input is not None:
+            self._changes.update(_schema_fields(self._effective(), self.hass, fields)(dict(user_input)))
+            # Persist the complete effective mapping as flat options. Never alter entry.data.
+            return self.async_create_entry(title="", data=self._effective())
+        return self._form("advanced", fields)
 
 
 # ======================================================
 # Validation
 # ======================================================
+
+
+def _schema_fields(defaults, hass, field_names):
+    """Build a schema subset while retaining the existing selectors/defaults."""
+    full_schema = _build_schema(defaults, hass=hass)
+    selected_fields = {
+        marker: validator
+        for marker, validator in full_schema.schema.items()
+        if getattr(marker, "schema", None) in field_names
+    }
+    return vol.Schema(selected_fields)
+
+
+def _normalize_initial_config(flow_data):
+    """Return only the existing flat config keys for a new config entry."""
+    config_keys = (
+        CONF_SOLAR_POWER,
+        CONF_GRID_POWER,
+        CONF_BATTERY_POWER,
+        CONF_NORDPOOL_CONFIG_ENTRY,
+        CONF_NORDPOOL_AREA,
+        CONF_PRICE_PERIOD_MINUTES,
+        CONF_PRICE_SELECTION_MODE,
+        CONF_CONSUMERS,
+        CONF_VERY_CHEAP_LIMIT,
+        CONF_CHEAP_LIMIT,
+        CONF_NORMAL_LIMIT,
+        CONF_EXPENSIVE_LIMIT,
+        CONF_INVESTMENT,
+        "solar_investment",
+        "battery_investment",
+        "advanced_mode",
+        "co2_factor",
+        "currency",
+    )
+    return {key: flow_data[key] for key in config_keys}
 
 
 def _validate_price_thresholds(user_input) -> str | None:
@@ -455,7 +723,7 @@ def _build_schema(defaults=None, *, hass=None):
                 }
             ),
 
-            vol.Optional("currency", default="SEK"): vol.In(
+            vol.Optional("currency", default=defaults.get("currency", "SEK")): vol.In(
                 {
                     "SEK": "SEK (Swedish Krona)",
                     "EUR": "EUR (€ Euro)",

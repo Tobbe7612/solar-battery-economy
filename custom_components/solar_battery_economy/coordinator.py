@@ -29,6 +29,7 @@ from .const import (
     CONF_CONSUMERS,
     CONF_NORDPOOL_CONFIG_ENTRY,
     CONF_NORDPOOL_AREA,
+    get_effective_config,
 )
 from .economy_calculations import calculate_savings, battery_solar_share
 from .price_model import find_cheapest_future_period
@@ -82,7 +83,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         )
 
         self.entry = entry
-        conf = entry.options or entry.data
+        conf = get_effective_config(entry)
 
         self.solar_entity = conf["solar_power"]
         self.grid_entity = conf["grid_power"]
@@ -109,10 +110,8 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.solar_investment = conf.get("solar_investment", 0)
         self.battery_investment = conf.get("battery_investment", 0)
         self.co2_factor = conf.get("co2_factor", 0.4)
-        self.currency = entry.options.get(
-            "currency",
-            conf.get("currency", "SEK"),
-        )
+        # The merged config keeps options-first precedence and the SEK fallback.
+        self.currency = conf.get("currency", "SEK")
         # Price classification thresholds (SEK/kWh)
         self.very_cheap_limit = conf.get(
             CONF_VERY_CHEAP_LIMIT,

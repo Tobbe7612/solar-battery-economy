@@ -30,3 +30,8 @@ CONF_NORMAL_LIMIT: Final = "normal_limit"
 CONF_EXPENSIVE_LIMIT: Final = "expensive_limit"
 CONF_INVESTMENT: Final = "investment"
 INTEGRATION_VERSION = "1.4.0"  # keep in sync with manifest.json's "version" field
+
+
+def get_effective_config(entry) -> dict:
+    """Return config entry data overlaid with its options, per key."""
+    return {**entry.data, **entry.options}

@@ -2,7 +2,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import DOMAIN
+from .const import DOMAIN, get_effective_config
 from .sensor_base import EconomySensor
 from .coordinator import SolarBatteryEconomyCoordinator
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
@@ -13,7 +13,7 @@ from homeassistant.components.sensor import SensorDeviceClass
 # async_setup_entry
 # -----------------------------
 async def async_setup_entry(hass, entry, async_add_entities):
-    advanced_mode = entry.options.get("advanced_mode", False)
+    advanced_mode = get_effective_config(entry).get("advanced_mode", False)
     coordinator: SolarBatteryEconomyCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     sensors = []
