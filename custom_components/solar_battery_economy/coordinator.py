@@ -141,6 +141,9 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self._dashboard_shutdown_unsub = None
         self._dashboard_payload_task = None
         self._dashboard_latest_payload = None
+        self._live_power_subscribers = {}
+        self._live_power_subscription_cleanup = {}
+        self._live_power_update_unsub = None
         self.install_date = None
         self._battery_split_migrated = False
 
@@ -556,6 +559,58 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self._dashboard_subscribers.clear()
         cleanup_callbacks = tuple(self._dashboard_subscription_cleanup.values())
         self._dashboard_subscription_cleanup.clear()
+        for cleanup_callback in cleanup_callbacks:
+            cleanup_callback()
+
+    @callback
+    def async_subscribe_live_power(
+        self,
+        subscriber_id,
+        callback_fn,
+        cleanup_fn=None,
+    ) -> dict:
+        """Subscribe to the shared live-power snapshot on coordinator updates."""
+        self._live_power_subscribers[subscriber_id] = callback_fn
+        if cleanup_fn is not None:
+            self._live_power_subscription_cleanup[subscriber_id] = cleanup_fn
+        if self._live_power_update_unsub is None:
+            self._live_power_update_unsub = self.async_add_listener(
+                self._handle_live_power_update
+            )
+        return self.data.get("live_power", {})
+
+    @callback
+    def async_unsubscribe_live_power(self, subscriber_id) -> None:
+        """Remove a live-power subscriber and its shared listener if unused."""
+        self._live_power_subscribers.pop(subscriber_id, None)
+        self._live_power_subscription_cleanup.pop(subscriber_id, None)
+        if not self._live_power_subscribers:
+            self._stop_live_power_subscription()
+
+    @callback
+    def _handle_live_power_update(self) -> None:
+        """Fan out the already-built snapshot after a coordinator update."""
+        snapshot = self.data.get("live_power", {})
+        for subscriber_callback in tuple(self._live_power_subscribers.values()):
+            try:
+                subscriber_callback(snapshot)
+            except Exception:
+                _LOGGER.exception("Unable to send live-power update to subscriber")
+
+    @callback
+    def async_shutdown_live_power(self) -> None:
+        """Release live-power subscriptions when this config entry unloads."""
+        self._stop_live_power_subscription()
+
+    @callback
+    def _stop_live_power_subscription(self) -> None:
+        """Remove the one shared coordinator listener and clean up clients."""
+        if self._live_power_update_unsub is not None:
+            self._live_power_update_unsub()
+            self._live_power_update_unsub = None
+        self._live_power_subscribers.clear()
+        cleanup_callbacks = tuple(self._live_power_subscription_cleanup.values())
+        self._live_power_subscription_cleanup.clear()
         for cleanup_callback in cleanup_callbacks:
             cleanup_callback()
 

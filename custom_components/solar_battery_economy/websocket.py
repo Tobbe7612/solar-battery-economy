@@ -16,6 +16,7 @@ from .const import DOMAIN
 
 WS_TYPE_GET_DASHBOARD_DATA = f"{DOMAIN}/get_dashboard_data"
 WS_TYPE_SUBSCRIBE_DASHBOARD_DATA = f"{DOMAIN}/subscribe_dashboard_data"
+WS_TYPE_SUBSCRIBE_LIVE_POWER = f"{DOMAIN}/subscribe_live_power"
 
 
 @websocket_api.websocket_command(
@@ -110,8 +111,66 @@ async def ws_subscribe_dashboard_data(
     _send_dashboard_event(payload)
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_TYPE_SUBSCRIBE_LIVE_POWER,
+        vol.Required("config_entry_id"): cv.string,
+    }
+)
+@websocket_api.async_response
+async def ws_subscribe_live_power(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to the selected entry's already-built live-power snapshot."""
+    existing_unsubscribe = connection.subscriptions.get(msg["id"])
+    if existing_unsubscribe is not None:
+        existing_unsubscribe()
+
+    coordinator = hass.data.get(DOMAIN, {}).get(msg["config_entry_id"])
+    if coordinator is None:
+        connection.send_error(
+            msg["id"],
+            "config_entry_not_found",
+            "Solar Battery Economy config entry not found",
+        )
+        return
+
+    subscriber_id = (id(connection), msg["id"])
+
+    @callback
+    def _send_live_power_event(snapshot: dict[str, Any]) -> None:
+        connection.send_event(msg["id"], snapshot)
+
+    @callback
+    def _remove_connection_subscription() -> None:
+        connection.subscriptions.pop(msg["id"], None)
+
+    @callback
+    def _unsubscribe_live_power() -> None:
+        coordinator.async_unsubscribe_live_power(subscriber_id)
+        connection.subscriptions.pop(msg["id"], None)
+
+    try:
+        snapshot = coordinator.async_subscribe_live_power(
+            subscriber_id,
+            _send_live_power_event,
+            _remove_connection_subscription,
+        )
+    except Exception as err:  # pragma: no cover - defensive runtime boundary
+        coordinator.async_unsubscribe_live_power(subscriber_id)
+        connection.send_error(msg["id"], "live_power_subscription_failed", str(err))
+        return
+
+    connection.subscriptions[msg["id"]] = _unsubscribe_live_power
+    connection.send_result(msg["id"])
+    _send_live_power_event(snapshot)
+
+
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register Solar Battery Economy WebSocket commands."""
     websocket_api.async_register_command(hass, ws_get_dashboard_data)
     websocket_api.async_register_command(hass, ws_subscribe_dashboard_data)
+    websocket_api.async_register_command(hass, ws_subscribe_live_power)
