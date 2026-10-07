@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .sensor_helpers import _float_state
 from .flow_calculation import calculate_flows
+from .live_power import build_live_power_data
 from .const import (
     DOMAIN,
     DEFAULT_VERY_CHEAP_LIMIT,
@@ -149,6 +150,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
         self.data = {
             # Existing public data — do not rename or remove.
             "power": {},
+            "live_power": {},
             "energy": {},
             "money": {},
             "savings": {},
@@ -671,6 +673,11 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             if self.install_date is None:
                 self.install_date = dt_util.utcnow()
             now = dt_util.utcnow()
+            power_input_states = {
+                "solar": self.hass.states.get(self.solar_entity),
+                "grid": self.hass.states.get(self.grid_entity),
+                "battery": self.hass.states.get(self.battery_entity),
+            }
             solar_w = _float_state(self.hass, self.solar_entity)
             grid_w = _float_state(self.hass, self.grid_entity)
             battery_w = _float_state(self.hass, self.battery_entity)
@@ -684,6 +691,11 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 + flows.get("battery_house_power", 0)
                 + flows.get("grid_house_power", 0),
                 3,
+            )
+            self.data["live_power"] = build_live_power_data(
+                self.data["power"],
+                power_input_states,
+                calculated_at=now,
             )
 
             if self._last_update is None:
