@@ -50,6 +50,7 @@ from .dashboard_data import (
     build_deterministic_insights,
     build_energy_samples_from_statistics,
     build_periodized_energy_data,
+    build_grid_period_data,
     build_house_analysis,
     calculate_shared_import_price_median,
     select_price_intervals_window,
@@ -71,6 +72,19 @@ def _is_numeric(value) -> bool:
         return False
     return True
 
+
+def _stat_in_period(stat: dict, start, end) -> bool:
+    """Whether a Recorder bucket is fully inside a half-open day period."""
+    from .recorder_data import stat_end, stat_start
+    sample_start = stat_start(stat)
+    sample_end = stat_end(stat)
+    return (
+        sample_start is not None
+        and sample_end is not None
+        and sample_start >= start
+        and sample_end <= end
+        and sample_end > sample_start
+    )
 
 class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
     """Coordinator for Solar & Battery Economy integration."""
@@ -233,6 +247,7 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 house_total_entity,
                 grid_house_entity,
                 battery_house_entity,
+                *energy_flow_entities.values(),
                 *consumer_entities,
             ]
             if entity_id
@@ -373,6 +388,66 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
             consumer_data["history"] = samples
             consumers[entity_id] = consumer_data
 
+        # Calendar-day analytics use the same Recorder statistics and aligned
+        # Nord Pool history as the energy timeline. Legacy top-level values
+        # remain the rolling 24-hour analysis for existing consumers.
+        calendar_analyses = {}
+        for period_name, period_start, period_end in (
+            ("yesterday", calendar.yesterday_start, calendar.today_start),
+            ("today", calendar.today_start, analysis_end),
+        ):
+            period_start = normalize_datetime(period_start)
+            period_end = normalize_datetime(period_end)
+            period_prices = [
+                item for item in price_states
+                if period_start <= item["timestamp"] < period_end
+            ]
+            period_reference_price = calculate_shared_import_price_median(period_prices)
+            period_house_stats = [
+                item for item in statistics.get(house_total_entity, [])
+                if _stat_in_period(item, period_start, period_end)
+            ] if house_total_entity else []
+            period_house_samples = build_statistics_energy_samples_with_price_history(
+                period_house_stats, period_prices
+            )
+            period_battery_stats = [
+                item for item in statistics.get(battery_house_entity, [])
+                if _stat_in_period(item, period_start, period_end)
+            ] if battery_house_entity else []
+            period_battery_samples = build_statistics_energy_samples_with_price_history(
+                period_battery_stats, period_prices
+            )
+            period_house = build_house_analysis(
+                period_house_samples,
+                reference_price=period_reference_price,
+                battery_house_samples=(
+                    period_battery_samples if battery_house_entity else None
+                ),
+            )
+            period_consumers = {}
+            for entity_id in consumer_entities:
+                period_stats = [
+                    item for item in statistics.get(entity_id, [])
+                    if _stat_in_period(item, period_start, period_end)
+                ]
+                period_samples = build_statistics_energy_samples_with_price_history(
+                    period_stats, period_prices
+                )
+                period_consumers[entity_id] = build_consumer_dashboard_data(
+                    name=consumers[entity_id]["name"],
+                    energy_entity=entity_id,
+                    samples=period_samples,
+                    reference_price=period_reference_price,
+                    house_total_samples=period_house_samples,
+                    house_average_import_price=period_house["average_import_price"],
+                )
+            calendar_analyses[period_name] = {
+                "start": period_start.isoformat(),
+                "end": period_end.isoformat(),
+                "house": period_house,
+                "consumers": period_consumers,
+                "insights": build_deterministic_insights(period_house, period_consumers),
+            }
         current_price = price_model.get("current")
         dashboard_price_intelligence = {
             "current_price_class": (
@@ -409,7 +484,21 @@ class SolarBatteryEconomyCoordinator(DataUpdateCoordinator):
                 ),
             },
             "house": house,
+            "calendar_analysis": calendar_analyses,
             "energy": energy,
+            "period": {
+                "start": analysis_start.isoformat(),
+                "end": analysis_end.isoformat(),
+                "timezone": "Europe/Stockholm",
+                "interval": "[start, end)",
+                "max_history_hours": 24,
+                "grid": build_grid_period_data(
+                    analysis_statistics,
+                    energy_flow_entities,
+                    start=analysis_start,
+                    end=analysis_end,
+                ),
+            },
             "house_history": build_energy_samples_from_statistics(
                 house_total_stats
             ),

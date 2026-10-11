@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import sys
+import types
 
 import pytest
 
@@ -13,12 +15,18 @@ PRICE_MODEL_PATH = (
     / "price_model.py"
 )
 
+package = types.ModuleType("custom_components.solar_battery_economy")
+package.__path__ = [str(PRICE_MODEL_PATH.parent)]
+sys.modules.setdefault("custom_components", types.ModuleType("custom_components"))
+sys.modules[package.__name__] = package
+
 _spec = importlib.util.spec_from_file_location(
-    "solar_battery_economy_price_model",
+    "custom_components.solar_battery_economy.price_model",
     PRICE_MODEL_PATH,
 )
 price_model = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
+sys.modules[_spec.name] = price_model
 _spec.loader.exec_module(price_model)
 
 

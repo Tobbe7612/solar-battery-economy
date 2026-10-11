@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .recorder_data import DASHBOARD_TIMEZONE
+
 
 # ---------------------------------------------------------------------------
 # Price classification
@@ -284,7 +286,7 @@ def calculate_today_import_price_statistics(
     before ``now`` are included. The current 15-minute interval is included
     because its known total import price is already available.
     """
-    local_now = now
+    local_now = now.astimezone(DASHBOARD_TIMEZONE)
     day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     intervals = [
@@ -292,7 +294,7 @@ def calculate_today_import_price_statistics(
         for interval in forecast
         if interval.get("import") is not None
         and interval.get("start") is not None
-        and day_start <= interval["start"] <= local_now
+        and day_start <= interval["start"] < local_now
     ]
 
     if not intervals:

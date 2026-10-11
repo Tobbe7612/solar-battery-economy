@@ -105,10 +105,10 @@ def test_coordinator_dashboard_uses_shared_price_reference_and_battery_house():
         and isinstance(node.func, ast.Name)
         and node.func.id == "build_house_analysis"
     ]
-    assert len(calls) == 1
-    keywords = {keyword.arg for keyword in calls[0].keywords}
-    assert {"reference_price", "battery_house_samples"}.issubset(keywords)
-
+    assert len(calls) == 2
+    for call in calls:
+        keywords = {keyword.arg for keyword in call.keywords}
+        assert {"reference_price", "battery_house_samples"}.issubset(keywords)
     assert 'self._get_energy_entity_id("battery_house")' in source
     assert 'calculate_shared_import_price_median(\n            analysis_price_states' in source
 

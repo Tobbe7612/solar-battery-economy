@@ -116,6 +116,18 @@ def test_dashboard_extended_recorder_request_does_not_remove_analysis_clamp():
     assert "select_price_intervals_window(" in source
 
 
+def test_dashboard_adds_selected_period_grid_contract_without_replacing_legacy_fields():
+    source = _dashboard_method_source()
+
+    assert "*energy_flow_entities.values()" in source
+    assert '"period": {' in source
+    assert '"timezone": "Europe/Stockholm"' in source
+    assert '"interval": "[start, end)"' in source
+    assert '"max_history_hours": 24' in source
+    assert '"grid": build_grid_period_data(' in source
+    assert '"energy": energy' in source
+
+
 def test_periodized_energy_uses_registry_lookup_and_existing_recorder_request():
     source = COORDINATOR_PATH.read_text(encoding="utf-8")
     dashboard_source = _dashboard_method_source()
@@ -191,3 +203,15 @@ def test_dashboard_data_fetch_does_not_trigger_entity_updates():
     assert "async_set_updated_data" not in source
     assert "async_write_ha_state" not in source
     assert "_handle_event_update" not in source
+
+
+def test_dashboard_exposes_calendar_day_analysis_from_day_bounded_recorder_samples():
+    source = _dashboard_method_source()
+
+    assert '("yesterday", calendar.yesterday_start, calendar.today_start)' in source
+    assert '("today", calendar.today_start, analysis_end)' in source
+    assert "_stat_in_period(item, period_start, period_end)" in source
+    assert '"calendar_analysis": calendar_analyses' in source
+    assert '"house": period_house' in source
+    assert '"consumers": period_consumers' in source
+    assert '"insights": build_deterministic_insights(period_house, period_consumers)' in source

@@ -53,6 +53,8 @@ ENERGY_KEYS = (
     "grid_battery",
     "battery_house",
     "battery_grid",
+    "grid_house",
+    "house_grid",
 )
 
 
@@ -119,6 +121,33 @@ def test_periodized_energy_tomorrow_is_null_without_statistics():
             "discharged_kwh": None,
             "to_house_kwh": None,
             "to_grid_kwh": None,
+        },
+        "grid": {
+            "import": {
+                "value_kwh": None,
+                "unit": "kWh",
+                "status": "forecast_unavailable",
+                "complete": False,
+                "source_entities": {
+                    "grid_house": "sensor.custom_prefix_energy_grid_house",
+                    "grid_battery": "sensor.custom_prefix_energy_grid_battery",
+                },
+                "definition": "SBE signed-net import flow partition",
+                "provenance": "Home Assistant Recorder; no future measurements",
+            },
+            "export": {
+                "value_kwh": None,
+                "unit": "kWh",
+                "status": "forecast_unavailable",
+                "complete": False,
+                "source_entities": {
+                    "solar_export": "sensor.custom_prefix_energy_solar_export",
+                    "battery_grid": "sensor.custom_prefix_energy_battery_grid",
+                    "house_grid": "sensor.custom_prefix_energy_house_grid",
+                },
+                "definition": "SBE signed-net export flow partition",
+                "provenance": "Home Assistant Recorder; no future measurements",
+            },
         },
     }
 
@@ -235,6 +264,131 @@ def test_periodized_energy_covers_25_hour_dst_day():
 
     assert (end_utc - start.astimezone(timezone.utc)) == timedelta(hours=25)
     assert result["yesterday"]["solar"]["to_house_kwh"] == 3.0
+
+
+def _complete_grid_stats(entities, start, amounts_by_key):
+    result = {}
+    for key, amounts in amounts_by_key.items():
+        result[entities[key]] = [
+            {
+                "start": start + timedelta(minutes=5 * index),
+                "end": start + timedelta(minutes=5 * (index + 1)),
+                "change": amount,
+            }
+            for index, amount in enumerate(amounts)
+        ]
+    return result
+
+
+def test_grid_period_components_are_summed_once_and_true_zero_is_complete():
+    entities = _energy_entities()
+    start = datetime(2026, 10, 5, 10, tzinfo=timezone.utc)
+    components = {
+        "grid_house": [0.0, 0.0],
+        "grid_battery": [0.0, 0.0],
+        "solar_export": [0.1, 0.2],
+        "battery_grid": [0.3, 0.4],
+        "house_grid": [0.5, 0.6],
+    }
+    stats = _complete_grid_stats(entities, start, components)
+
+    result = module.build_grid_period_data(
+        stats,
+        entities,
+        start=start,
+        end=start + timedelta(minutes=10),
+    )
+
+    assert result["import"]["value_kwh"] == 0.0
+    assert result["import"]["status"] == "complete"
+    assert result["export"]["value_kwh"] == 2.1
+    assert result["export"]["status"] == "complete"
+    assert "not a gross meter reading" in result["import"]["definition"]
+
+
+def test_grid_period_distinguishes_missing_and_partial_or_gapped_history():
+    entities = _energy_entities()
+    start = datetime(2026, 10, 5, 10, tzinfo=timezone.utc)
+    components = {
+        key: [0.1, 0.1]
+        for key in ("grid_house", "grid_battery", "solar_export", "battery_grid", "house_grid")
+    }
+    stats = _complete_grid_stats(entities, start, components)
+
+    del entities["grid_battery"]
+    missing_entity = module.build_grid_period_data(
+        stats, entities, start=start, end=start + timedelta(minutes=10)
+    )
+    assert missing_entity["import"]["value_kwh"] is None
+    assert missing_entity["import"]["status"] == "missing_entity"
+
+    entities = _energy_entities()
+    stats[entities["grid_house"]] = []
+    missing_stats = module.build_grid_period_data(
+        stats, entities, start=start, end=start + timedelta(minutes=10)
+    )
+    assert missing_stats["import"]["value_kwh"] is None
+    assert missing_stats["import"]["status"] == "missing_statistics"
+
+    stats = _complete_grid_stats(entities, start, components)
+    for key in components:
+        stats[entities[key]].pop(1)
+    partial = module.build_grid_period_data(
+        stats, entities, start=start, end=start + timedelta(minutes=10)
+    )
+    assert partial["import"]["value_kwh"] == 0.2
+    assert partial["import"]["status"] == "partial"
+    assert partial["import"]["complete"] is False
+
+    # A missing bucket in one import component is an internal gap when the
+    # other required component continues later in the requested period.
+    three_bucket_components = {
+        "grid_house": [0.1],
+        "grid_battery": [0.1, 0.1, 0.1],
+        "solar_export": [0.1, 0.1, 0.1],
+        "battery_grid": [0.1, 0.1, 0.1],
+        "house_grid": [0.1, 0.1, 0.1],
+    }
+    stats = _complete_grid_stats(entities, start, three_bucket_components)
+    internal_gap = module.build_grid_period_data(
+        stats, entities, start=start, end=start + timedelta(minutes=15)
+    )
+    assert internal_gap["import"]["value_kwh"] is None
+    assert internal_gap["import"]["status"] == "incomplete"
+
+    stats = _complete_grid_stats(entities, start, components)
+    for key in components:
+        stats[entities[key]].pop(0)
+    gapped = module.build_grid_period_data(
+        stats, entities, start=start, end=start + timedelta(minutes=10)
+    )
+    assert gapped["import"]["value_kwh"] is None
+    assert gapped["import"]["status"] == "incomplete"
+
+
+def test_grid_period_uses_local_calendar_boundaries_across_dst_days():
+    zone = ZoneInfo("Europe/Stockholm")
+    entities = _energy_entities()
+    for local_date, expected_hours in ((datetime(2026, 3, 29), 23), (datetime(2026, 10, 25), 25)):
+        start_local = local_date.replace(tzinfo=zone)
+        end_local = (local_date + timedelta(days=1)).replace(tzinfo=zone)
+        start = start_local.astimezone(timezone.utc)
+        end = end_local.astimezone(timezone.utc)
+        buckets = int((end - start).total_seconds() // 300)
+        amounts = {
+            key: [0.01] * buckets
+            for key in ("grid_house", "grid_battery", "solar_export", "battery_grid", "house_grid")
+        }
+        stats = _complete_grid_stats(entities, start, amounts)
+
+        result = module.build_grid_period_data(
+            stats, entities, start=start_local, end=end_local
+        )
+
+        assert (end - start).total_seconds() / 3600 == expected_hours
+        assert result["import"]["complete"] is True
+        assert result["import"]["value_kwh"] == round(0.02 * buckets, 6)
+        assert result["export"]["value_kwh"] == round(0.03 * buckets, 6)
 
 
 def test_select_price_intervals_window_keeps_overlapping_boundary_interval():

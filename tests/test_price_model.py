@@ -1,6 +1,8 @@
 from datetime import datetime
 import importlib.util
 from pathlib import Path
+import sys
+import types
 
 import pytest
 
@@ -13,7 +15,7 @@ MODULE_PATH = (
 )
 
 spec = importlib.util.spec_from_file_location(
-    "solar_battery_economy_price_model",
+    "custom_components.solar_battery_economy.price_model",
     MODULE_PATH,
 )
 
@@ -21,6 +23,11 @@ if spec is None or spec.loader is None:
     raise ImportError(f"Could not load module from {MODULE_PATH}")
 
 price_model = importlib.util.module_from_spec(spec)
+package = types.ModuleType("custom_components.solar_battery_economy")
+package.__path__ = [str(MODULE_PATH.parent)]
+sys.modules.setdefault("custom_components", types.ModuleType("custom_components"))
+sys.modules[package.__name__] = package
+sys.modules[spec.name] = price_model
 spec.loader.exec_module(price_model)
 
 find_cheapest_future_period = price_model.find_cheapest_future_period
@@ -399,4 +406,24 @@ def test_calculate_today_import_price_statistics_uses_today_through_now():
         "highest_import_price": 3.0,
         "average_import_price": 2.0,
         "interval_count": 3,
+    }
+
+
+def test_today_price_statistics_uses_stockholm_day_and_exclusive_now():
+    now = datetime.fromisoformat("2026-09-18T22:07:00+00:00")
+    forecast = [
+        {"start": datetime.fromisoformat("2026-09-18T21:45:00+00:00"), "import": 90.0},
+        {"start": datetime.fromisoformat("2026-09-18T22:00:00+00:00"), "import": 2.0},
+        {"start": datetime.fromisoformat("2026-09-18T22:15:00+00:00"), "import": 50.0},
+    ]
+
+    result = price_model.calculate_today_import_price_statistics(
+        forecast, now=now
+    )
+
+    assert result == {
+        "lowest_import_price": 2.0,
+        "highest_import_price": 2.0,
+        "average_import_price": 2.0,
+        "interval_count": 1,
     }
